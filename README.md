@@ -69,7 +69,7 @@ cp src/.env.example src/.env
 | `TOKEN_AUDIENCE` | In prod | JWT `aud` claim, e.g. `https://api.wakr.co` |
 | `JWT_PUBLIC_KEY` | In prod | RS256 public key PEM string (single line or multiline) |
 
-The application reads `.env` from the directory it is **started from**. When running as a systemd service, set `WorkingDirectory` to the `src/` folder (see below).
+The application reads `src/.env` relative to `src/config.py` (not the current working directory). When running as a systemd service, `WorkingDirectory` is optional for env loading but can still be set for consistency.
 
 ---
 
