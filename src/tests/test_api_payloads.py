@@ -652,24 +652,19 @@ class TestPricingSummaryFilters:
 # ---------------------------------------------------------------------------
 
 class TestRegionalSummaryFilters:
-    def test_state_filter(self, client, payload_log):
-        """state= is a WHERE clause — no key-resolution query, same 2 queries."""
-        conn = mock_conn(
-            mock_result(*STATE_ROWS),
-            mock_result(*TREND_REGIONAL),
+    def test_state_filter_rejected(self, client, payload_log):
+        """regional/summary does not support state= — must return 400 INVALID_PARAM."""
+        r = client.get(
+            "/api/v1/regional/summary?time_range=trailing_30&state=TX",
+            headers=AUTH,
         )
-        with patch("routers.regional.get_conn", get_conn_for(conn)):
-            r = client.get(
-                "/api/v1/regional/summary?time_range=trailing_30&state=TX",
-                headers=AUTH,
-            )
         body = r.json()
         _record(payload_log, "GET",
                 "/api/v1/regional/summary?time_range=trailing_30&state=TX",
                 r.status_code, body)
-        assert r.status_code == 200
-        _assert_envelope(body)
-        assert body["filters_applied"]["state"] == "TX"
+        assert r.status_code == 400
+        assert body["error"]["code"] == "INVALID_PARAM"
+        assert body["error"]["field"] == "state"
 
     def test_inventory_type_new(self, client, payload_log):
         conn = mock_conn(

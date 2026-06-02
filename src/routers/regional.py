@@ -56,12 +56,20 @@ async def regional_summary(
     as_of_date: Optional[date] = Query(default=None),
     _token: str = Depends(require_auth),
 ):
+    if state is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_detail(
+                "INVALID_PARAM",
+                "regional/summary aggregates all states and does not support the state filter.",
+                "state",
+            ),
+        )
     params = FilterParams(
         time_range=time_range,
         inventory_type=inventory_type,
         make=make,
         model=model,
-        state=state,
     )
     dr = resolve_time_range(time_range, as_of_date)
 

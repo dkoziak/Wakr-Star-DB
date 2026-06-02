@@ -44,6 +44,12 @@ async def resolve_filter_keys(conn: AsyncConnection, params: FilterParams) -> di
     """
     keys: dict = {}
 
+    if params.model and params.model.lower() != "all" and not (params.make and params.make.lower() != "all"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_detail("INVALID_PARAM", "model requires make", "model"),
+        )
+
     if params.make and params.make.lower() != "all":
         row = (
             await conn.execute(

@@ -31,3 +31,7 @@ build/
 .idea/
 .vscode/
 *.swp
+*~
+
+# Review artefacts
+SUGGESTIONS.md
