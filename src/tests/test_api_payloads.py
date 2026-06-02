@@ -601,6 +601,22 @@ class TestInventorySummaryFilters:
         assert body["error"]["code"] == "INVALID_PARAM"
         assert body["error"]["field"] == "model"
 
+    def test_model_without_make_returns_400(self, client, payload_log):
+        """model provided without make → 400 INVALID_PARAM before any DB query."""
+        conn = mock_conn()  # no DB queries should fire
+        with patch("routers.inventory.get_conn", get_conn_for(conn)):
+            r = client.get(
+                "/api/v1/inventory/summary?time_range=trailing_30&model=fi23",
+                headers=AUTH,
+            )
+        body = r.json()
+        _record(payload_log, "GET",
+                "/api/v1/inventory/summary?time_range=trailing_30&model=fi23",
+                r.status_code, body)
+        assert r.status_code == 400
+        assert body["error"]["code"] == "INVALID_PARAM"
+        assert body["error"]["field"] == "model"
+
 
 # ---------------------------------------------------------------------------
 # Filter tests — pricing/summary
