@@ -15,14 +15,17 @@ REST API serving boat market intelligence data from the Wakr Data Lake.
 2. [Installation](#installation)
 3. [Configuration](#configuration)
 4. [Running in Development](#running-in-development)
-5. [Running as a systemd Service (Linux)](#running-as-a-systemd-service-linux)
-6. [Authentication](#authentication)
-7. [API Reference](#api-reference)
+5. [Running Tests](#running-tests)
+6. [Running with Docker](#running-with-docker)
+7. [Running as a systemd Service (Linux)](#running-as-a-systemd-service-linux)
+8. [Authentication](#authentication)
+9. [API Reference](#api-reference)
+   - [Common Parameters](#common-parameters)
    - [Inventory Tab](#inventory-tab)
    - [Pricing Tab](#pricing-tab)
    - [Regional Tab](#regional-tab)
-8. [Error Responses](#error-responses)
-9. [Response Envelope](#response-envelope)
+10. [Error Responses](#error-responses)
+11. [Response Envelope](#response-envelope)
 
 ---
 
@@ -58,15 +61,52 @@ Copy `.env.example` to `.env` inside `src/` and fill in your values:
 cp src/.env.example src/.env
 ```
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | Async PostgreSQL connection string | `postgresql+asyncpg://wakr:secret@localhost:5432/wakr` |
-| `DEBUG` | `true` accepts any Bearer token — **never use in production** | `false` |
-| `TOKEN_ISSUER` | JWT `iss` claim — your IdP's issuer URL | `https://wakr.us.auth0.com/` |
-| `TOKEN_AUDIENCE` | JWT `aud` claim | `https://api.wakr.co` |
-| `JWT_PUBLIC_KEY` | RS256 public key PEM string (single line or multiline) | `-----BEGIN PUBLIC KEY-----...` |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `STARDB_URL` | Yes | Async PostgreSQL connection string — must use `postgresql+asyncpg://` driver |
+| `DEBUG` | No | `true` accepts any Bearer token — **never use in production** |
+| `TOKEN_ISSUER` | In prod | JWT `iss` claim — your IdP's issuer URL, e.g. `https://wakr.us.auth0.com/` |
+| `TOKEN_AUDIENCE` | In prod | JWT `aud` claim, e.g. `https://api.wakr.co` |
+| `JWT_PUBLIC_KEY` | In prod | RS256 public key PEM string (single line or multiline) |
 
-The application reads `.env` from the directory it is **started from**. When running as a systemd service, set `WorkingDirectory` to the `src/` folder (see below).
+The application reads `src/.env` relative to `src/config.py` (not the current working directory). When running as a systemd service, `WorkingDirectory` is optional for env loading but can still be set for consistency.
+
+---
+
+## Local development setup
+
+### 1. Start the local database
+
+The shared local Docker stack runs PostgreSQL 16 on port **5433**:
+
+```bash
+cd /path/to/your/docker/stack  # directory containing docker-compose.local.yml
+docker compose -f docker-compose.local.yml up -d
+```
+
+### 2. Create a virtual environment
+
+```bash
+cd Wakr-Star-DB
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r src/requirements.txt
+```
+
+### 3. Create `src/.env`
+
+```bash
+cp src/.env.example src/.env
+```
+
+Minimal local `.env`:
+
+```env
+STARDB_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5433/wakr_stardb
+DEBUG=true
+```
+
+`DEBUG=true` bypasses JWT validation — any Bearer token is accepted. Never set this in production.
 
 ---
 
@@ -78,6 +118,84 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Interactive docs are available at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc`.
+
+---
+
+## Running Tests
+
+Install the dev dependencies (adds `pytest`, `pytest-asyncio`, and `httpx` on top of the runtime requirements):
+
+```bash
+pip install -r src/requirements-dev.txt
+```
+
+Run the full suite from the project root:
+
+```bash
+cd src
+python3 -m pytest tests/ -v
+```
+
+Expected output: **113 tests passing**, 0 failures, 0 errors. The suite covers:
+
+- `tests/test_auth.py` — unit tests for `_has_required_scope` and async integration tests for `require_auth` (401 / 403 / 200 paths)
+- `tests/test_inventory.py` — `/inventory/summary`, `/inventory/trend`, `/inventory/velocity`
+- `tests/test_pricing.py` — `/pricing/summary`, `/pricing/dom-by-price-tier`, `/pricing/listings-by-price-tier`, `/pricing/model-efficiency`
+- `tests/test_regional.py` — `/regional/summary`, `/regional/state-overview`, `/regional/market-leaders`
+
+All database calls are mocked with in-memory `SimpleNamespace` row objects — no live database or network connection is required to run the tests.
+
+To run a single file:
+
+```bash
+python3 -m pytest tests/test_auth.py -v
+```
+
+---
+
+## Running with Docker
+
+### Build and start
+
+```bash
+docker compose up --build
+```
+
+The API is available at `http://localhost:8000`. The compose file starts a local PostgreSQL 16 container alongside the API — useful for development and integration testing.
+
+### Environment variables
+
+The compose file reads `src/.env` for the API container. Before starting, set `STARDB_URL` to point at the compose `db` service:
+
+```
+STARDB_URL=postgresql+asyncpg://wakr:wakr@db:5432/wakr
+```
+
+All other variables (`DEBUG`, `TOKEN_ISSUER`, etc.) follow the same conventions as local development.
+
+### Connecting to an external database
+
+If your production PostgreSQL is hosted externally (RDS, Cloud SQL, Supabase, etc.), remove the `db` service and `depends_on` block from `docker-compose.yml` and set `STARDB_URL` to your external connection string.
+
+### Production image only (no local DB)
+
+```bash
+docker build -t wakr-api .
+docker run -p 8000:8000 --env-file src/.env wakr-api
+```
+
+### Useful commands
+
+```bash
+# Follow API logs
+docker compose logs -f api
+
+# Run tests inside the container
+docker compose run --rm api python3 -m pytest tests/ -v
+
+# Stop everything and remove volumes
+docker compose down -v
+```
 
 ---
 
@@ -109,7 +227,7 @@ sudo -u wakr-api /opt/wakr/Wakr-Star-DB/.venv/bin/pip install \
 
 ```bash
 sudo -u wakr-api tee /opt/wakr/Wakr-Star-DB/src/.env > /dev/null << 'EOF'
-DATABASE_URL=postgresql+asyncpg://wakr:secret@localhost:5432/wakr
+STARDB_URL=postgresql+asyncpg://wakr:secret@localhost:5432/wakr
 DEBUG=false
 TOKEN_ISSUER=https://wakr.us.auth0.com/
 TOKEN_AUDIENCE=https://api.wakr.co
@@ -245,7 +363,7 @@ BASE="https://api.wakr.co"
 
 ## API Reference
 
-### Common query parameters
+### Common Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -254,6 +372,7 @@ BASE="https://api.wakr.co"
 | `make` | `string` | all makes | Manufacturer name, e.g. `Malibu`. Omit or pass `all` for all makes. |
 | `model` | `string` | all models | Boat model name, e.g. `23 LSV`. Only valid when `make` is also specified. |
 | `state` | `string` | all states | Two-letter US state code, e.g. `FL`. Regional endpoints only. |
+| `as_of_date` | `string` | today | Anchor date (`YYYY-MM-DD`) for trailing windows. Useful for back-testing or reproducing a historical snapshot. Omit for live data. |
 
 ---
 
@@ -292,7 +411,7 @@ curl -s "$BASE/api/v1/inventory/summary?time_range=trailing_90" \
       "bucket_60_plus": 0
     }
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": {
     "time_range": "trailing_30",
@@ -330,7 +449,7 @@ curl -s "$BASE/api/v1/inventory/trend?time_range=trailing_90&inventory_type=new&
       { "snapshot_date": "2026-05-14", "active_listings": 3201 }
     ]
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "l12m", "inventory_type": "combined" }
 }
@@ -374,7 +493,7 @@ curl -s "$BASE/api/v1/inventory/velocity?time_range=trailing_30&state=FL" \
       }
     ]
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30", "make": "Centurion" }
 }
@@ -413,7 +532,7 @@ curl -s "$BASE/api/v1/pricing/summary?time_range=trailing_30&make=Malibu" \
       "units_sold": 134
     }
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30", "make": "Malibu" }
 }
@@ -444,7 +563,7 @@ curl -s "$BASE/api/v1/pricing/dom-by-price-tier?time_range=trailing_30&inventory
       { "band": "over_140k",    "band_label": "Over $140k",  "avg_days_on_market": 24.5, "velocity_label": "Slow" }
     ]
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30", "inventory_type": "new" }
 }
@@ -477,7 +596,7 @@ curl -s "$BASE/api/v1/pricing/listings-by-price-tier?time_range=trailing_30" \
       { "band": "over_140k",  "band_label": "Over $140k",  "listings": 733 }
     ]
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30" }
 }
@@ -522,7 +641,7 @@ curl -s "$BASE/api/v1/pricing/model-efficiency?time_range=trailing_30&make=Centu
       }
     ]
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30", "make": "Centurion", "model": "Ri245" }
 }
@@ -577,7 +696,7 @@ curl -s "$BASE/api/v1/regional/summary?time_range=trailing_30&make=Malibu" \
       "states_falling": 10
     }
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30" }
 }
@@ -632,7 +751,7 @@ curl -s "$BASE/api/v1/regional/state-overview?time_range=trailing_30&inventory_t
       }
     ]
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30" }
 }
@@ -677,7 +796,7 @@ curl -s "$BASE/api/v1/regional/market-leaders?time_range=trailing_30&make=Malibu
       { "rank": 3, "state": "ND", "state_name": "North Dakota","boats_sold": 5,  "listings": 14 }
     ]
   },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30" }
 }
@@ -712,7 +831,7 @@ Every successful response is wrapped in a standard envelope:
 ```json
 {
   "data": { ... },
-  "data_as_of": "2026-05-13T06:00:00",
+  "data_as_of": "2026-05-13T00:00:00Z",
   "generated_at": "2026-05-21T14:22:10Z",
   "filters_applied": { "time_range": "trailing_30", "inventory_type": "combined" }
 }

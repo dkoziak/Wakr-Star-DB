@@ -3,13 +3,13 @@ Test infrastructure.
 
 Environment variables must be set before any app modules are imported so that
 pydantic-settings picks up DEBUG=true (bypasses JWT validation) and a dummy
-DATABASE_URL (SQLAlchemy engine creation is lazy — no actual connection is made).
+STARDB_URL (SQLAlchemy engine creation is lazy — no actual connection is made).
 """
 
 import os
 
 os.environ.setdefault("DEBUG", "true")
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test_wakr")
+os.environ.setdefault("STARDB_URL", "postgresql+asyncpg://test:test@localhost/test_wakr")
 
 from contextlib import asynccontextmanager  # noqa: E402
 from unittest.mock import AsyncMock, MagicMock  # noqa: E402

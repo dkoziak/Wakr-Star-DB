@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 from routers import inventory, pricing, regional
 
@@ -40,6 +44,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception for %s %s", request.method, request.url)
     return JSONResponse(
         status_code=500,
         content={"error": {"code": "INTERNAL", "message": "An unexpected error occurred."}},

@@ -39,19 +39,19 @@ def resolve_time_range(tr: TimeRange, as_of_date: Optional[date] = None) -> Date
     today = as_of_date or date.today()
 
     if tr == TimeRange.trailing_7:
-        start = today - timedelta(days=7)
+        start = today - timedelta(days=6)
         end = today
         prior_start = start - timedelta(days=7)
         prior_end = start - timedelta(days=1)
 
     elif tr == TimeRange.trailing_30:
-        start = today - timedelta(days=30)
+        start = today - timedelta(days=29)
         end = today
         prior_start = start - timedelta(days=30)
         prior_end = start - timedelta(days=1)
 
     elif tr == TimeRange.trailing_90:
-        start = today - timedelta(days=90)
+        start = today - timedelta(days=89)
         end = today
         prior_start = start - timedelta(days=90)
         prior_end = start - timedelta(days=1)
@@ -80,8 +80,14 @@ def resolve_time_range(tr: TimeRange, as_of_date: Optional[date] = None) -> Date
     elif tr == TimeRange.ytd:
         start = today.replace(month=1, day=1)
         end = today
-        prior_start = start.replace(year=start.year - 1)
-        prior_end = end.replace(year=end.year - 1)
+        try:
+            prior_start = start.replace(year=start.year - 1)
+        except ValueError:
+            prior_start = date(start.year - 1, 3, 1)
+        try:
+            prior_end = end.replace(year=end.year - 1)
+        except ValueError:
+            prior_end = date(end.year - 1, 3, 1)
 
     elif tr == TimeRange.l12m:
         start = today - timedelta(days=365)

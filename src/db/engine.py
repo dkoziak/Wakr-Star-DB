@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from config import settings
 
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+engine = create_async_engine(settings.stardb_url, pool_pre_ping=True)
 
 
 @asynccontextmanager
