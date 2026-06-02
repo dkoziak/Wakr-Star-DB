@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wakr Data Lake — ERD (JSON Schema v1.4.0)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+
+    @page {
+      size: 420mm 297mm;
+      margin: 0mm;
+    }
+
+    :root {
+      --bg: #0a0e1a;
+      --border: #1e293b;
+      --dim-color: #0f2643;
+      --dim-header: #1e4976;
+      --fact-color: #0e2010;
+      --fact-header: #1a4a1a;
+      --mart-color: #1e1030;
+      --mart-header: #3d1f5c;
+      --bridge-color: #221a08;
+      --bridge-header: #3d3210;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --pk: #f59e0b;
+      --fk: #60a5fa;
+      --accent-dim: #38bdf8;
+      --accent-fact: #4ade80;
+      --accent-mart: #a78bfa;
+      --accent-bridge: #fbbf24;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--bg);
+      font-family: 'IBM Plex Sans', sans-serif;
+      color: var(--text);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page-wrap {
+      width: 1587px;
+      min-height: 1122px;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 6px 14px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #0a0e1a, #0d1b2e);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .logo { font-weight: 700; font-size: 17px; color: var(--accent-dim); white-space: nowrap; letter-spacing: -0.5px; }
+    .logo span { color: var(--text-muted); font-weight: 300; }
+    .meta { font-family: 'IBM Plex Mono', monospace; font-size: 7.5px; color: var(--text-muted); line-height: 1.6; }
+    .vtag { display: inline-block; color: var(--accent-fact); background: rgba(74,222,128,.1); border: 1px solid rgba(74,222,128,.2); border-radius: 3px; padding: 0 4px; font-size: 7.5px; }
+
+    .legend { display: flex; gap: 10px; margin-left: auto; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 3px; font-size: 7.5px; font-family: 'IBM Plex Mono', monospace; color: var(--text-muted); white-space: nowrap; }
+    .ldot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+    .diagram-area { padding: 10px 12px; position: relative; flex: 1; overflow: hidden; }
+
+    svg.connectors {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 0; overflow: visible;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(10, 153px);
+      grid-auto-rows: auto;
+      gap: 9px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .table-card { border-radius: 4px; border: 1px solid var(--border); overflow: hidden; font-size: 8.5px; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+    .table-card.dim    { background: var(--dim-color);    border-color: var(--dim-header);    }
+    .table-card.fact   { background: var(--fact-color);   border-color: var(--fact-header);   }
+    .table-card.mart   { background: var(--mart-color);   border-color: var(--mart-header);   }
+    .table-card.bridge { background: var(--bridge-color); border-color: var(--bridge-header); }
+
+    .table-header { padding: 3px 7px; font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 8px; display: flex; align-items: center; gap: 3px; }
+    .table-header.dim    { background: var(--dim-header);    color: var(--accent-dim);    }
+    .table-header.fact   { background: var(--fact-header);   color: var(--accent-fact);   }
+    .table-header.mart   { background: var(--mart-header);   color: var(--accent-mart);   }
+    .table-header.bridge { background: var(--bridge-header); color: var(--accent-bridge); }
+
+    .type-badge { font-size: 6.5px; padding: 0 3px; border-radius: 2px; margin-left: auto; font-weight: 600; white-space: nowrap; }
+    .dim .type-badge    { background: rgba(56,189,248,.15);  color: var(--accent-dim);    }
+    .fact .type-badge   { background: rgba(74,222,128,.15);  color: var(--accent-fact);   }
+    .mart .type-badge   { background: rgba(167,139,250,.15); color: var(--accent-mart);   }
+    .bridge .type-badge { background: rgba(251,191,36,.15);  color: var(--accent-bridge); }
+
+    .table-body { padding: 2px 0; }
+    .col-row { display: flex; align-items: center; gap: 2px; padding: 0.5px 6px; font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: var(--text-muted); line-height: 1.3; }
+    .col-name { flex: 1; color: #cbd5e1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .col-type { font-size: 6.5px; color: #475569; text-transform: uppercase; white-space: nowrap; flex-shrink: 0; }
+    .key-badge { font-size: 7px; font-weight: 700; width: 14px; text-align: center; border-radius: 2px; flex-shrink: 0; }
+    .pk-badge  { background: rgba(245,158,11,.2); color: var(--pk); }
+    .fk-badge  { background: rgba(96,165,250,.2); color: var(--fk); }
+    .no-badge  { width: 14px; flex-shrink: 0; }
+    .two-col   { display: grid; grid-template-columns: 1fr 1fr; }
+    .grain-row { padding: 1px 6px 2px; font-size: 6.5px; font-family: 'IBM Plex Mono', monospace; color: #475569; border-top: 1px solid rgba(255,255,255,.05); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sect-label { font-size: 6px; font-family: 'IBM Plex Mono', monospace; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px; border-top: 1px solid rgba(255,255,255,.06); }
+    .mart-entry { padding: 2px 6px; font-family: 'IBM Plex Mono', monospace; font-size: 7.5px; color: #c4b5fd; border-bottom: 1px solid rgba(255,255,255,.04); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mart-grain { font-size: 6px; color: #64748b; display: block; }
+    .mart-ph2   { font-size: 6px; color: var(--accent-bridge); float: right; }
+
+    /* ── Grid placement ── */
+    /* Row 1: 10 Dimensions */
+    .c-dnet  { grid-column: 1;  grid-row: 1; }
+    .c-ddlr  { grid-column: 2;  grid-row: 1; }
+    .c-dgeo  { grid-column: 3;  grid-row: 1; }
+    .c-ddate { grid-column: 4;  grid-row: 1; }
+    .c-dsrc  { grid-column: 5;  grid-row: 1; }
+    .c-dmfr  { grid-column: 6;  grid-row: 1; }
+    .c-dbtier { grid-column: 7; grid-row: 1; }
+    .c-dmbr  { grid-column: 8;  grid-row: 1; }
+    .c-dlake { grid-column: 9;  grid-row: 1; }
+    .c-dcomp { grid-column: 10; grid-row: 1; }
+
+    /* Row 2 */
+    .c-bdmfr  { grid-column: 1;          grid-row: 2; }
+    .c-bmodel { grid-column: 2 / span 4; grid-row: 2; }
+    .c-binst  { grid-column: 6 / span 3; grid-row: 2; }
+
+    /* Row 3+4: Core facts */
+    .c-fsnap   { grid-column: 1 / span 4; grid-row: 3 / span 2; }
+    .c-fsale   { grid-column: 5 / span 3; grid-row: 3; }
+    .c-fengage { grid-column: 5 / span 3; grid-row: 4; }
+
+    /* Row 5 */
+    .c-fmem  { grid-column: 1 / span 2; grid-row: 5; }
+    .c-fmkt  { grid-column: 3 / span 2; grid-row: 5; }
+    .c-bfeat { grid-column: 5;          grid-row: 5; }
+    .c-mart  { grid-column: 6 / span 5; grid-row: 5; }
+  </style>
+</head>
+
+<body>
+  <div class="page-wrap">
+
+    <header>
+      <div class="logo">wakr <span>/ data lake ERD</span></div>
+      <div class="meta">
+        <span class="vtag">v1.4.0 · from JSON schema</span><br>
+        star-schema · crow&#39;s foot · updated 2026-03-06
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="ldot" style="background:#1e4976"></div>Dimension</div>
+        <div class="legend-item"><div class="ldot" style="background:#1a4a1a"></div>Fact</div>
+        <div class="legend-item"><div class="ldot" style="background:#3d1f5c"></div>Mart</div>
+        <div class="legend-item"><div class="ldot" style="background:#3d3210"></div>Bridge</div>
+        <div class="legend-item"><span style="color:#f59e0b;font-size:8px;font-family:monospace">PK</span>&nbsp;Primary Key</div>
+        <div class="legend-item"><span style="color:#60a5fa;font-size:8px;font-family:monospace">FK</span>&nbsp;Foreign Key</div>
+        <div class="legend-item">
+          <svg width="24" height="10" style="overflow:visible">
+            <line x1="0" y1="5" x2="24" y2="5" stroke="#94a3b8" stroke-width="1.2"/>
+            <line x1="0" y1="1" x2="0" y2="9" stroke="#94a3b8" stroke-width="1.5"/>
+            <line x1="24" y1="1" x2="24" y2="9" stroke="#94a3b8" stroke-width="1.5"/>
+          </svg>one
+        </div>
+        <div class="legend-item">
+          <svg width="28" height="10" style="overflow:visible">
+            <line x1="0" y1="5" x2="28" y2="5" stroke="#94a3b8" stroke-width="1.2"/>
+            <line x1="0" y1="1" x2="0" y2="9" stroke="#94a3b8" stroke-width="1.5"/>
+            <line x1="18" y1="5" x2="28" y2="5" stroke="#94a3b8" stroke-width="1.5"/>
+            <line x1="18" y1="5" x2="28" y2="1" stroke="#94a3b8" stroke-width="1.5"/>
+            <line x1="18" y1="5" x2="28" y2="9" stroke="#94a3b8" stroke-width="1.5"/>
+          </svg>many
+        </div>
+        <div class="legend-item">
+          <svg width="32" height="10" style="overflow:visible">
+            <line x1="0" y1="5" x2="32" y2="5" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,2"/>
+            <line x1="0" y1="1" x2="0" y2="9" stroke="#a78bfa" stroke-width="1.5"/>
+            <circle cx="22" cy="5" r="3" stroke="#a78bfa" stroke-width="1.5" fill="none"/>
+            <line x1="28" y1="5" x2="32" y2="1" stroke="#a78bfa" stroke-width="1.5"/>
+            <line x1="28" y1="5" x2="32" y2="9" stroke="#a78bfa" stroke-width="1.5"/>
+          </svg>Ph2
+        </div>
+      </div>
+    </header>
+
+    <div class="diagram-area">
+      <svg class="connectors" id="svg-lines"></svg>
+      <div class="grid">
+
+        <!-- ROW 1: 10 Dimensions -->
+        
+        <div class="table-card dim c-dnet " id="dim_dealer_network">
+          <div class="table-header dim">dim_dealer_network <span class="type-badge">SCD1·NEW</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">dealer_network_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">network_name</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">parent_company</span><span class="col-type">VAR(200)·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">network_type</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_wakr_partner</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">network_join_date</span><span class="col-type">DATE·NULL</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-ddlr " id="dim_dealer">
+          <div class="table-header dim">dim_dealer <span class="type-badge">SCD2</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">dealer_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">dealer_id_external</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">dealer_name</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">address</span><span class="col-type">VAR(300)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">city</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">state</span><span class="col-type">CHAR(2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">zip</span><span class="col-type">VAR(10)</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">geo_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">dealer_network_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">primary_manufacturer_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_authorized</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_wakr_partner</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">network_join_date</span><span class="col-type">DATE</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-dgeo " id="dim_geography">
+          <div class="table-header dim">dim_geography <span class="type-badge">SCD1</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">geo_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">zip</span><span class="col-type">VAR(10)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">city</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">county</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">state</span><span class="col-type">CHAR(2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">state_name</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">region</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">dma</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">lat</span><span class="col-type">DEC(9,6)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">lon</span><span class="col-type">DEC(9,6)</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-ddate " id="dim_date">
+          <div class="table-header dim">dim_date <span class="type-badge">SCD0</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">date_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">calendar_date</span><span class="col-type">DATE</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">year</span><span class="col-type">SMINT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">quarter</span><span class="col-type">SMINT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">month</span><span class="col-type">SMINT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">week_of_year</span><span class="col-type">SMINT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">day_of_week</span><span class="col-type">SMINT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">season</span><span class="col-type">VAR(20)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_weekend</span><span class="col-type">BOOL</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-dsrc " id="dim_source">
+          <div class="table-header dim">dim_source <span class="type-badge">SCD0</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">source_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">source_name</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">source_type</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">scrape_domain</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">reliability_tier</span><span class="col-type">VAR(20)</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-dmfr " id="dim_manufacturer">
+          <div class="table-header dim">dim_manufacturer <span class="type-badge">SCD1</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">manufacturer_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">manufacturer_name</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">brand_tier_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_wakr_partner</span><span class="col-type">BOOL</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-dbtier " id="dim_brand_tier">
+          <div class="table-header dim">dim_brand_tier <span class="type-badge">SCD1·NEW</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">brand_tier_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">tier_name</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">min_price</span><span class="col-type">DEC(10,2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">max_price</span><span class="col-type">DEC(10,2)·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">display_order</span><span class="col-type">SMINT</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-dmbr " id="dim_member">
+          <div class="table-header dim">dim_member <span class="type-badge">SCD2</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">member_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">member_id_hashed</span><span class="col-type">VAR(64)</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">geo_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">join_date</span><span class="col-type">DATE</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">skill_level</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">membership_tier</span><span class="col-type">VAR(50)</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-dlake " id="dim_lake">
+          <div class="table-header dim">dim_lake <span class="type-badge">SCD1</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">lake_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">lake_name</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">state</span><span class="col-type">CHAR(2)</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">geo_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">surface_acres</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">lake_type</span><span class="col-type">VAR(50)</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-dcomp " id="dim_competitor_brand">
+          <div class="table-header dim">dim_competitor_brand <span class="type-badge">SCD1·Ph2</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">competitor_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">brand_name</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">brand_tier</span><span class="col-type">VAR(50)</span></div>
+          </div>
+        </div>
+
+        <!-- ROW 2: Bridge + Boat dims -->
+        
+        <div class="table-card bridge c-bdmfr " id="bridge_dealer_manufacturer">
+          <div class="table-header bridge">bridge_dealer_manufacturer <span class="type-badge">BRIDGE</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">dealer_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">manufacturer_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_primary</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_authorized</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">authorization_type</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">effective_date</span><span class="col-type">DATE</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">expiry_date</span><span class="col-type">DATE·NULL</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-bmodel " id="dim_boat_model">
+          <div class="table-header dim">dim_boat_model <span class="type-badge">SCD1</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">manufacturer_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">make</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">model</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">model_year</span><span class="col-type">SMINT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">boat_type</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">hull_length_ft</span><span class="col-type">DEC(5,2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">engine_type</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">base_engine_hp</span><span class="col-type">SMINT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">base_tower_included</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">base_ballast_lbs</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">msrp</span><span class="col-type">DEC(10,2)</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card dim c-binst " id="dim_boat_instance">
+          <div class="table-header dim">dim_boat_instance <span class="type-badge">SCD2</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">boat_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">vin</span><span class="col-type">VAR(50)·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_new</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">manufacture_date</span><span class="col-type">DATE·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">current_hours</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">condition</span><span class="col-type">VAR(20)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">color</span><span class="col-type">VAR(100)·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">actual_engine_hp</span><span class="col-type">SMINT·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">has_tower</span><span class="col-type">BOOL·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">actual_ballast_lbs</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">dealer_key</span><span class="col-type">INT·NULL</span></div>
+          </div>
+        </div>
+
+        <!-- ROW 3+4: Core Facts -->
+        
+        <div class="table-card fact c-fsnap" id="fact_listing_snapshot">
+          <div class="table-header fact">fact_listing_snapshot <span class="type-badge">FACT·Ph1</span></div>
+          <div class="grain-row">grain: one row per listing per day</div><div class="table-body two-col"><div><div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">snapshot_key</span><span class="col-type">BGINT</span></div><div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">date_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">dealer_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">geo_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">source_key</span><span class="col-type">INT</span></div></div><div><div class="col-row"><span class="no-badge"></span><span class="col-name">listing_id</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">listed_price</span><span class="col-type">DEC(10,2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">original_list_price</span><span class="col-type">DEC(10,2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">price_change_amount</span><span class="col-type">DEC(10,2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">days_on_market</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">listing_status</span><span class="col-type">VAR(30)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_new_listing</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_removed</span><span class="col-type">BOOL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">mileage_hours</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">condition_notes</span><span class="col-type">VAR(500)·NULL</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">listing_url</span><span class="col-type">VAR(500)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">first_seen_date</span><span class="col-type">DATE</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">last_seen_date</span><span class="col-type">DATE·NULL</span></div></div></div>
+        </div>
+        
+        <div class="table-card fact c-fsale" id="fact_estimated_sale">
+          <div class="table-header fact">fact_estimated_sale <span class="type-badge">FACT·Ph1</span></div>
+          <div class="grain-row">grain: one row per inferred sale event</div><div class="table-body two-col"><div><div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">est_sale_key</span><span class="col-type">BGINT</span></div><div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">date_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">dealer_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">geo_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">source_key</span><span class="col-type">INT</span></div></div><div><div class="col-row"><span class="no-badge"></span><span class="col-name">listing_id</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">final_listed_price</span><span class="col-type">DEC(10,2)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">days_on_market</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">confidence_score</span><span class="col-type">DEC(4,3)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">sale_type</span><span class="col-type">VAR(20)</span></div></div></div>
+        </div>
+        
+        <div class="table-card fact c-fengage" id="fact_listing_engagement">
+          <div class="table-header fact">fact_listing_engagement <span class="type-badge">FACT·Ph1</span></div>
+          <div class="grain-row">grain: one row per listing per day</div><div class="table-body two-col"><div><div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">engagement_key</span><span class="col-type">BGINT</span></div><div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">date_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">dealer_key</span><span class="col-type">INT</span></div></div><div><div class="col-row"><span class="no-badge"></span><span class="col-name">listing_id</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">impressions</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">clicks</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">leads_generated</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">click_through_rate</span><span class="col-type">DEC(6,4)</span></div></div></div>
+        </div>
+
+        <!-- ROW 5: Phase 2 + bridge_listing_features + mart -->
+        
+        <div class="table-card fact c-fmem" id="fact_member_activity">
+          <div class="table-header fact">fact_member_activity <span class="type-badge">FACT·Ph2</span></div>
+          <div class="grain-row">grain: one row per member activity event</div><div class="table-body two-col"><div><div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">activity_key</span><span class="col-type">BGINT</span></div><div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">date_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">member_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">dealer_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">lake_key</span><span class="col-type">INT·NULL</span></div></div><div><div class="col-row"><span class="no-badge"></span><span class="col-name">activity_type</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">is_owner</span><span class="col-type">BOOL</span></div></div></div>
+        </div>
+        
+        <div class="table-card fact c-fmkt" id="fact_marketplace_behavior">
+          <div class="table-header fact">fact_marketplace_behavior <span class="type-badge">FACT·Ph2</span></div>
+          <div class="grain-row">grain: one row per marketplace event</div><div class="table-body two-col"><div><div class="col-row"><span class="key-badge pk-badge">PK</span><span class="col-name">behavior_key</span><span class="col-type">BGINT</span></div><div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">date_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">member_key</span><span class="col-type">INT·NULL</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">geo_key</span><span class="col-type">INT</span></div></div><div><div class="col-row"><span class="no-badge"></span><span class="col-name">event_type</span><span class="col-type">VAR(50)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">session_id</span><span class="col-type">VAR(100)</span></div></div></div>
+        </div>
+        
+        <div class="table-card bridge c-bfeat " id="bridge_listing_features">
+          <div class="table-header bridge">bridge_listing_features <span class="type-badge">BRIDGE</span></div>
+          <div class="table-body">
+<div class="col-row"><span class="no-badge"></span><span class="col-name">listing_id</span><span class="col-type">VAR(200)</span></div>
+<div class="col-row"><span class="key-badge fk-badge">FK</span><span class="col-name">boat_model_key</span><span class="col-type">INT</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">feature_category</span><span class="col-type">VAR(100)</span></div>
+<div class="col-row"><span class="no-badge"></span><span class="col-name">feature_value</span><span class="col-type">VAR(200)</span></div>
+          </div>
+        </div>
+        
+        <div class="table-card mart c-mart" id="mart_panel">
+          <div class="table-header mart">Mart Layer (Phase 1) <span class="type-badge">MART</span></div>
+          <div class="table-body">
+<div class="mart-entry">mart_inventory_summary<span class="mart-grain">grain: make / model / region / week</span><span class="mart-grain" style="color:#64748b">sell_through_rate, mom_listing_change_pct, days_supply</span></div><div class="mart-entry">mart_pricing_trends<span class="mart-grain">grain: make / model / region / month</span><span class="mart-grain" style="color:#64748b">pct_listings_with_price_cut, discount_pressure_pct</span></div><div class="mart-entry">mart_time_on_market<span class="mart-grain">grain: make / model / region / month</span><span class="mart-grain" style="color:#64748b">dom_status, aging_risk_level</span></div><div class="mart-entry">mart_dealer_scorecard<span class="mart-grain">grain: dealer / month</span><span class="mart-grain" style="color:#64748b">delta_week_units, market_share_pct</span></div><div class="mart-entry">mart_estimated_velocity<span class="mart-grain">grain: make / model / region / month</span><span class="mart-grain" style="color:#64748b">demand_supply_ratio, momentum_status</span></div><div class="mart-entry"><span class="mart-ph2">Ph2</span>mart_member_usage<span class="mart-grain">grain: lake / model / month</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

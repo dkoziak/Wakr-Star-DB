@@ -1,0 +1,17 @@
+.git/
+.DS_Store
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+.venv/
+venv/
+env/
+src/.env
+src/tests/
+Documentation/
+*.egg-info/
+dist/
+build/

@@ -1,0 +1,3146 @@
+{
+  "schema": {
+    "name": "Wakr Data Lake",
+    "version": "1.7.0",
+    "description": "Star-schema data lake for Wakr market intelligence platform. Tracks towboat/watersport boat listings, pricing, inventory velocity, dealer performance, and member activity across national dealer networks.",
+    "updated": "2026-05-14",
+    "pattern": "star-schema",
+    "layers": [
+      "dimensions",
+      "facts",
+      "bridges",
+      "marts"
+    ],
+    "source_types": [
+      "scraper",
+      "manufacturer_feed",
+      "directus_cms",
+      "website_cms",
+      "manual_import"
+    ],
+    "source_trust_hierarchy": [
+      "manufacturer_feed (priority 0)",
+      "manual_import (priority 1)",
+      "directus_cms (priority 2)",
+      "scraper (priority 3)",
+      "website_cms (priority 4)"
+    ],
+    "changelog": [
+      "v1.7.0 (2026-05-14): Full Layer 2 reconciliation against layer2_central_db_schema_v2.sql. (1) layer2_db section rebuilt with all 17 Layer 2 tables, correct columns, and data_lake_projection mappings. (2) Table name corrections: gear_brands (was l2_manufacturer), boats_models (was l2_boat_model), waters, dealer_groups, dealers, dealer_brands. (3) l2 sync columns added/corrected on dim_manufacturer (l2_gear_brand_id), dim_boat_model (l2_boats_model_id), dim_lake (l2_waters_id), dim_dealer_network (l2_dealer_group_id), dim_dealer (l2_dealer_id). (4) dim_lake: avg_depth_ft, salinity added. (5) dim_manufacturer: slug, country_of_origin, is_active added. (6) dim_boat_model: default_engine_model_id (Phase 2 placeholder), is_active added. (7) dim_boat_instance: canonical_boat_id UUID added from dealer_inventories dedup strategy. (8) bridge_dealer_manufacturer.authorization_type corrected to L2 lowercase values. (9) bridge_listing_features: trailer category added. (10) Engine and floorplan layers documented in layer2_db as Phase 2 candidates. (11) source_trust_hierarchy updated to match source_priority_ref exactly.",
+      "v1.6.0 (2026-05-14): Time Range parameter gap analysis and Layer 2 DB additions. (1) Confirmed Time Range dropdown values: Last 7 Days | Trailing 30 Days | Last 90 Days | Year to Date | Last 12 Months. (2) Gap analysis: only T30 and MoM were previously supported in mart computed columns; T7, T90, YTD, and L12M had no pre-aggregated support. (3) All Phase-1 marts updated: mart_inventory_summary grain changed to daily to support T7; all marts now carry a supported_time_ranges list and window-parameterized computed column sets for T7, T30, T90, YTD, L12M. Added mart_daily_snapshot as a new lightweight daily-grain mart to power T7 and exact T30 queries without hitting raw facts. (4) Layer 2 DB documented: l2_manufacturer and l2_boat_model tables defined as the authoritative source for dim_manufacturer and dim_boat_model respectively. l2_manufacturer_id and l2_boat_model_id foreign key columns added to corresponding Data Lake dimensions to maintain sync linkage. Model dropdown on all tabs resolves value list from l2_boat_model scoped to selected Make.",
+      "v1.5.0 (2026-05-14): Figma dashboard UX v2 audit \u2014 Inventory, Regional, and Pricing tabs reviewed (Dealers skipped, not yet implemented). Changes: (1) Model filter added as a first-class parameter across all three tabs \u2014 mart grains expanded to include boat_model_key. (2) Comparison % vs market added as a companion computed column to every KPI metric box on all tabs. (3) mart_inventory_summary: added inventory_added_t30, dom_bucket_0_7/8_15/16_30/31_60/60_plus for Days on Market Distribution chart, active_units column, and resolved momentum_status definition (Accelerating | Stable | Slowing) \u2014 removed PENDING status. (4) mart_pricing_trends: added avg_list_price, median_list_price, mom_price_change_pct, top_selling_band_low/high/units, avg_dom_by_price_band_* and listing_count_by_price_band_* for all 6 price bands (under_60k, 60_80k, 80_100k, 100_120k, 120_140k, over_140k), and price_band_min/max columns to support Listings by Price Tier chart and Model Price Efficiency table. (5) mart_regional_summary: new mart added to support Regional tab \u2014 state-level grain with listings, avg_dom, boats_sold_t30, pct_market, avg_price, yoy_supply_change_pct, fastest/slowest market derivation, and sales_trend_rising/falling state counts. All mart grains and FK references updated accordingly.",
+      "v1.4.0 (2026-03-06): Figma dashboard analytics audit. Added dim_brand_tier (price-based segment config table). Added brand_tier_key FK on dim_manufacturer. Added state_name to dim_geography. Added computed metric columns to all Phase-1 mart tables: sell_through_rate, days_supply, mom_listing_change_pct (mart_inventory_summary); pct_listings_with_price_cut, discount_pressure_pct (mart_pricing_trends); dom_status, aging_risk_level (mart_time_on_market); demand_supply_ratio, momentum_status [PENDING] (mart_estimated_velocity); delta_week_units, market_share_pct [PENDING] (mart_dealer_scorecard). territory on dim_dealer intentionally omitted \u2014 DMA from dim_geography.dma serves this purpose. Intelligence signals feed intentionally omitted \u2014 computed at runtime. price_tier column omitted \u2014 not needed as stored field.",
+      "v1.3.0 (2026-03-05): Added dim_dealer_network for multi-location dealer group rollup. Replaced single manufacturer_key FK on dim_dealer with bridge_dealer_manufacturer (many-to-many). Renamed dim_boat_model configurable fields to base_* to clarify they represent manufacturer baseline specs, not per-instance configuration.",
+      "v1.2.0 (2026-03-04): Initial JSON export of ERD v3. Split dim_boat into dim_boat_model (type/template) and dim_boat_instance (physical unit)."
+    ],
+    "notes": [
+      "All fact tables carry both boat_key (instance) and boat_model_key (model) FKs to support aggregation at either grain without extra joins.",
+      "VIN is nullable on dim_boat_instance \u2014 deduplication uses make+model+year+hours+price-tolerance matching across sources.",
+      "Phase 2 tables are in development and subject to change with early brand partners.",
+      "dim_member uses hashed IDs \u2014 no PII in any fact table.",
+      "fact_listing_snapshot should be partitioned by date_key (month) and manufacturer prefix on boat_model_key for query performance.",
+      "Each physical dealer location is a separate dim_dealer row. Roll up to dealer group via dim_dealer_network.",
+      "Dealer-to-manufacturer affiliation is many-to-many via bridge_dealer_manufacturer; a primary flag identifies the dealer's primary brand for denormalization convenience.",
+      "dim_boat_model base_* fields (base_engine_hp, base_ballast_lbs, base_tower_included) are manufacturer baseline specs for the model. Actual per-instance values are stored on dim_boat_instance and bridge_listing_features.",
+      "dim_brand_tier defines price-based boat segments (Entry/Mid/Premium) via min_price/max_price thresholds. Segment for a given listing is resolved by matching listed_price against these ranges at query time.",
+      "territory on dim_dealer is intentionally not stored as a separate column \u2014 use dim_geography.dma (Nielsen DMA) as the territory proxy.",
+      "demand_supply_ratio = boats_sold_t30 / active_listings. Demand is defined as count of boats sold over the measurement period \u2014 no external signal required.",
+      "momentum_status definition RESOLVED (v1.5.0): Accelerating = avg_dom trending down MoM AND sell_through_rate trending up; Slowing = avg_dom trending up MoM OR sell_through_rate trending down; Stable = neither threshold met. Thresholds configurable.",
+      "market_share_pct definition PENDING user research \u2014 reserved placeholder in mart_dealer_scorecard.",
+      "Model parameter (v1.5.0): Model values are always scoped to the selected Make. When Make = All Makes, Model filter is disabled. mart grains that include boat_model_key support model-level slicing without additional joins.",
+      "Comparison % vs market (v1.5.0): Every KPI metric box on Inventory, Regional, and Pricing tabs shows a companion pct_vs_market column. This is computed as ((user_company_value - market_avg_value) / market_avg_value) with sign indicating above (+) or below (-) market. User company is identified by Make and optionally Model. Stored as a computed column on each mart; positive = user is above market, negative = below.",
+      "Time Range parameter (v1.6.0): Five windows supported \u2014 Last 7 Days (T7), Trailing 30 Days (T30), Last 90 Days (T90), Year to Date (YTD), Last 12 Months (L12M). T7 and exact T30 are served by mart_daily_snapshot (daily grain). T90, YTD, and L12M are served by rolling aggregations over monthly mart rows or by mart_daily_snapshot for precision. Monthly marts (pricing, regional, velocity) pre-aggregate at monthly grain; multi-month windows (T90, L12M, YTD) are computed by summing/averaging the appropriate monthly rows at query time. YTD resets on Jan 1 of the current calendar year.",
+      "Layer 2 DB (v1.6.0): l2_manufacturer and l2_boat_model are the authoritative source tables maintained in a separate Layer 2 reference DB. dim_manufacturer and dim_boat_model in the Data Lake are downstream projections synced on a daily schedule. Surrogate key mapping preserved via l2_manufacturer_id and l2_boat_model_id columns added to the respective dim tables.",
+      "Layer 2 reconciliation (v1.7.0): Layer 2 table names corrected throughout \u2014 gear_brands, boats_models, waters, dealer_groups, dealers, dealer_brands. All l2_*_id sync columns updated to reflect actual Layer 2 PK names.",
+      "canonical_boat_id (v1.7.0): UUID from dealer_inventories added to dim_boat_instance. Durable cross-source boat identity. HIN is gold-standard dedup signal; source_record_key (URL) is scraper upsert key.",
+      "Engine layer (v1.7.0): Layer 2 has engine_brands \u2192 engine_models \u2192 boat_engine_instances and boats_models.default_engine_model_id. No Data Lake projection yet \u2014 Phase 2. default_engine_model_id placeholder added to dim_boat_model.",
+      "Floorplan layer (v1.7.0): dealer_floorplan_config + inventory_floorplan + floorplan_curtailment_events documented as Phase 2 candidate for Dealer Financial Health mart.",
+      "authorization_type correction (v1.7.0): bridge_dealer_manufacturer values corrected to lowercase L2 values: full | service_only | parts_only | pending | other.",
+      "listing_features trailer (v1.7.0): 'trailer' added to bridge_listing_features.feature_category \u2014 was missing from prior ERD.",
+      "dim_lake additions (v1.7.0): avg_depth_ft and salinity added from waters.",
+      "dim_manufacturer additions (v1.7.0): slug, country_of_origin, is_active added from gear_brands.",
+      "dim_dealer note (v1.7.0): primary_manufacturer_key has no direct L2 backing \u2014 populate from dealer_brands WHERE is_primary=TRUE during sync.",
+      "Source priority (v1.7.0): manufacturer_feed(0) < manual_import(1) < directus_cms(2) < scraper(3) < website_cms(4)."
+    ],
+    "layer2_db": {
+      "description": "Wakr Central Business Database (Layer 2). PostgreSQL 16, schema v2.5.0. The authoritative operational database. The Data Lake (Layer 3) dimensions are downstream projections of Layer 2 reference tables, synced on a daily schedule.",
+      "source_priority_ref": {
+        "description": "Single source of truth for valid _source values and write-conflict priority. All _source columns on Layer 2 business tables carry an FK to this table. Higher priority integer wins a write conflict.",
+        "values": [
+          {
+            "source_name": "manufacturer_feed",
+            "priority": 0,
+            "source_type": "feed"
+          },
+          {
+            "source_name": "manual_import",
+            "priority": 1,
+            "source_type": "manual"
+          },
+          {
+            "source_name": "directus_cms",
+            "priority": 2,
+            "source_type": "cms"
+          },
+          {
+            "source_name": "scraper",
+            "priority": 3,
+            "source_type": "scraper"
+          },
+          {
+            "source_name": "website_cms",
+            "priority": 4,
+            "source_type": "cms"
+          }
+        ]
+      },
+      "tables": [
+        {
+          "table": "gear_brands",
+          "description": "Master manufacturer/brand registry. Single source of truth for all boat make names, partner status, and active flag. Maps to dim_manufacturer in the Data Lake. directus_id is an ETL sync artifact only \u2014 not the authoritative row identity.",
+          "data_lake_projection": "dim_manufacturer",
+          "sync_key": "gear_brands.id \u2192 dim_manufacturer.l2_gear_brand_id",
+          "columns": [
+            {
+              "name": "id",
+              "type": "SERIAL",
+              "constraints": [
+                "PK"
+              ]
+            },
+            {
+              "name": "directus_id",
+              "type": "INTEGER",
+              "notes": "ETL sync artifact. NULL until Website ETL pushes row to Directus. Do not use as write or upsert key."
+            },
+            {
+              "name": "external_id",
+              "type": "TEXT",
+              "nullable": true,
+              "notes": "Source system own ID (e.g. manufacturer catalog ID)."
+            },
+            {
+              "name": "external_source",
+              "type": "TEXT",
+              "nullable": true,
+              "notes": "FK source_priority_ref.source_name."
+            },
+            {
+              "name": "name",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "slug",
+              "type": "TEXT",
+              "constraints": [
+                "UNIQUE"
+              ]
+            },
+            {
+              "name": "country_of_origin",
+              "type": "TEXT"
+            },
+            {
+              "name": "is_active",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ],
+              "notes": "FALSE for discontinued or delisted brands."
+            },
+            {
+              "name": "_source",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ],
+              "notes": "FK source_priority_ref. Row-level write authority."
+            },
+            {
+              "name": "_source_priority",
+              "type": "INTEGER",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "created_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "updated_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "boats_models",
+          "description": "Master boat model registry. One row per make/model/model_year. UNIQUE on (brand_id, name, model_year). default_engine_model_id links to factory-standard engine (FK engine_models.id). Model filter dropdown on all dashboard tabs resolves its value list from this table scoped to selected brand_id.",
+          "data_lake_projection": "dim_boat_model",
+          "sync_key": "boats_models.id \u2192 dim_boat_model.l2_boats_model_id",
+          "columns": [
+            {
+              "name": "id",
+              "type": "SERIAL",
+              "constraints": [
+                "PK"
+              ]
+            },
+            {
+              "name": "directus_id",
+              "type": "INTEGER",
+              "notes": "ETL sync artifact only."
+            },
+            {
+              "name": "external_id",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "external_source",
+              "type": "TEXT",
+              "nullable": true,
+              "notes": "FK source_priority_ref."
+            },
+            {
+              "name": "brand_id",
+              "type": "INTEGER",
+              "constraints": [
+                "NOT NULL",
+                "FK gear_brands.id"
+              ]
+            },
+            {
+              "name": "name",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "slug",
+              "type": "TEXT",
+              "nullable": true,
+              "notes": "Per-brand unique where NOT NULL."
+            },
+            {
+              "name": "model_year",
+              "type": "SMALLINT",
+              "constraints": [
+                "NOT NULL"
+              ],
+              "notes": "0 = unknown. Part of UNIQUE (brand_id, name, model_year)."
+            },
+            {
+              "name": "boat_type",
+              "type": "TEXT",
+              "notes": "CHECK: Ski | Wake | Surf | Crossover | Other"
+            },
+            {
+              "name": "hull_length_ft",
+              "type": "DECIMAL(5,2)"
+            },
+            {
+              "name": "engine_type",
+              "type": "TEXT"
+            },
+            {
+              "name": "base_engine_hp",
+              "type": "SMALLINT"
+            },
+            {
+              "name": "base_tower_included",
+              "type": "BOOLEAN"
+            },
+            {
+              "name": "base_ballast_lbs",
+              "type": "INTEGER"
+            },
+            {
+              "name": "msrp",
+              "type": "DECIMAL(10,2)"
+            },
+            {
+              "name": "default_engine_model_id",
+              "type": "INTEGER",
+              "nullable": true,
+              "notes": "FK engine_models.id. Factory-standard engine. NULL = not yet normalized or varies by trim."
+            },
+            {
+              "name": "is_active",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "_source",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "_source_priority",
+              "type": "INTEGER",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "created_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "updated_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "waters",
+          "description": "Operational lake/body-of-water reference. Maps to dim_lake. DMA removed \u2014 analytics concern computed in Layer 3 from zip/geo data. Includes PostGIS geometry (postgis extension). Unique on (name, state) where both non-null.",
+          "data_lake_projection": "dim_lake",
+          "sync_key": "waters.id \u2192 dim_lake.l2_waters_id",
+          "columns": [
+            {
+              "name": "id",
+              "type": "SERIAL",
+              "constraints": [
+                "PK"
+              ]
+            },
+            {
+              "name": "directus_id",
+              "type": "INTEGER",
+              "notes": "ETL sync artifact only."
+            },
+            {
+              "name": "external_id",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "external_source",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "name",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "state",
+              "type": "CHAR(2)"
+            },
+            {
+              "name": "state_name",
+              "type": "VARCHAR(50)"
+            },
+            {
+              "name": "county",
+              "type": "VARCHAR(100)"
+            },
+            {
+              "name": "lat",
+              "type": "DECIMAL(9,6)"
+            },
+            {
+              "name": "lon",
+              "type": "DECIMAL(9,6)"
+            },
+            {
+              "name": "surface_acres",
+              "type": "INTEGER"
+            },
+            {
+              "name": "avg_depth_ft",
+              "type": "DECIMAL(6,2)",
+              "notes": "Not yet in dim_lake \u2014 add in next sync pass."
+            },
+            {
+              "name": "salinity",
+              "type": "TEXT",
+              "notes": "CHECK: fresh | salt | brackish. Not yet in dim_lake \u2014 add in next sync pass."
+            },
+            {
+              "name": "lake_type",
+              "type": "TEXT",
+              "notes": "CHECK: Reservoir | Natural | Private | Other"
+            },
+            {
+              "name": "created_at",
+              "type": "TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "TIMESTAMP"
+            }
+          ]
+        },
+        {
+          "table": "dealer_groups",
+          "description": "Multi-location dealer networks and broker entities. Maps to dim_dealer_network. Manufacturers are NOT here \u2014 gear_brands is the manufacturer table. group_type: dealer_group | broker | other.",
+          "data_lake_projection": "dim_dealer_network",
+          "sync_key": "dealer_groups.id \u2192 dim_dealer_network.l2_dealer_group_id",
+          "columns": [
+            {
+              "name": "id",
+              "type": "SERIAL",
+              "constraints": [
+                "PK"
+              ]
+            },
+            {
+              "name": "directus_id",
+              "type": "INTEGER",
+              "notes": "ETL sync artifact only."
+            },
+            {
+              "name": "name",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "group_type",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ],
+              "notes": "CHECK: dealer_group | broker | other"
+            },
+            {
+              "name": "website_url",
+              "type": "TEXT"
+            },
+            {
+              "name": "address",
+              "type": "TEXT"
+            },
+            {
+              "name": "city",
+              "type": "TEXT"
+            },
+            {
+              "name": "state",
+              "type": "CHAR(2)"
+            },
+            {
+              "name": "state_name",
+              "type": "VARCHAR(50)"
+            },
+            {
+              "name": "zip",
+              "type": "VARCHAR(10)"
+            },
+            {
+              "name": "phone",
+              "type": "TEXT"
+            },
+            {
+              "name": "email",
+              "type": "TEXT"
+            },
+            {
+              "name": "network_name",
+              "type": "TEXT"
+            },
+            {
+              "name": "parent_company",
+              "type": "TEXT"
+            },
+            {
+              "name": "network_type",
+              "type": "TEXT",
+              "notes": "CHECK: franchise | independent | corporate | other. NOTE: ERD used Title Case \u2014 L2 uses lowercase."
+            },
+            {
+              "name": "is_wakr_partner",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "is_active",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "_source",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "_source_priority",
+              "type": "INTEGER",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "created_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "updated_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "dealers",
+          "description": "Operational dealer record. One row per physical location. Maps to dim_dealer. primary_brand_id removed from Layer 2 \u2014 derive via dealer_brands WHERE is_primary = TRUE. DMA removed. water_id FK to waters (nearest lake) maps to dim_lake via l2_waters_id.",
+          "data_lake_projection": "dim_dealer",
+          "sync_key": "dealers.id \u2192 dim_dealer.l2_dealer_id",
+          "columns": [
+            {
+              "name": "id",
+              "type": "SERIAL",
+              "constraints": [
+                "PK"
+              ]
+            },
+            {
+              "name": "directus_id",
+              "type": "INTEGER",
+              "notes": "ETL sync artifact only."
+            },
+            {
+              "name": "dealer_group_id",
+              "type": "INTEGER",
+              "nullable": true,
+              "notes": "FK dealer_groups.id. NULL for independent dealers."
+            },
+            {
+              "name": "dealer_name",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "dealer_url",
+              "type": "TEXT",
+              "constraints": [
+                "UNIQUE"
+              ]
+            },
+            {
+              "name": "address",
+              "type": "TEXT"
+            },
+            {
+              "name": "city",
+              "type": "TEXT"
+            },
+            {
+              "name": "state",
+              "type": "CHAR(2)"
+            },
+            {
+              "name": "state_name",
+              "type": "VARCHAR(50)"
+            },
+            {
+              "name": "zip",
+              "type": "VARCHAR(10)"
+            },
+            {
+              "name": "county",
+              "type": "VARCHAR(100)"
+            },
+            {
+              "name": "lat",
+              "type": "DECIMAL(9,6)"
+            },
+            {
+              "name": "lon",
+              "type": "DECIMAL(9,6)"
+            },
+            {
+              "name": "water_id",
+              "type": "INTEGER",
+              "nullable": true,
+              "notes": "FK waters.id. Nearest lake. Maps to dim_lake in Data Lake via l2_waters_id."
+            },
+            {
+              "name": "phone",
+              "type": "TEXT"
+            },
+            {
+              "name": "email",
+              "type": "TEXT"
+            },
+            {
+              "name": "is_authorized",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "is_wakr_partner",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "is_active",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "_source",
+              "type": "TEXT",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "_source_priority",
+              "type": "INTEGER",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "created_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "updated_at",
+              "type": "TIMESTAMP",
+              "constraints": [
+                "NOT NULL"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "dealer_brands",
+          "description": "Many-to-many bridge between dealers and gear_brands. Maps to bridge_dealer_manufacturer. UNIQUE (dealer_id, brand_id). authorization_type uses lowercase values \u2014 ERD corrected to match.",
+          "data_lake_projection": "bridge_dealer_manufacturer",
+          "columns": [
+            {
+              "name": "id",
+              "type": "SERIAL",
+              "constraints": [
+                "PK"
+              ]
+            },
+            {
+              "name": "dealer_id",
+              "type": "INTEGER",
+              "constraints": [
+                "NOT NULL",
+                "FK dealers.id ON DELETE CASCADE"
+              ]
+            },
+            {
+              "name": "brand_id",
+              "type": "INTEGER",
+              "constraints": [
+                "NOT NULL",
+                "FK gear_brands.id"
+              ]
+            },
+            {
+              "name": "is_primary",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "is_authorized",
+              "type": "BOOLEAN",
+              "constraints": [
+                "NOT NULL"
+              ]
+            },
+            {
+              "name": "authorization_type",
+              "type": "TEXT",
+              "notes": "CHECK: full | service_only | parts_only | pending | other."
+            },
+            {
+              "name": "effective_date",
+              "type": "DATE"
+            },
+            {
+              "name": "expiry_date",
+              "type": "DATE",
+              "nullable": true
+            }
+          ]
+        },
+        {
+          "table": "dealer_inventories",
+          "description": "Core operational listing table. One row per listing per source. Maps to fact_listing_snapshot (via daily scrape) and dim_boat_instance. source_record_key (URL) is the scraper upsert key. canonical_boat_id (UUID) is the durable cross-source boat identity. HIN is the gold-standard dedup signal. listing_status replaces legacy boolean flags: active | draft | sold | inactive | deleted | archived.",
+          "data_lake_projections": [
+            "fact_listing_snapshot",
+            "dim_boat_instance"
+          ],
+          "dedup_strategy": "source_record_key = scraper upsert handle. canonical_boat_id = durable UUID, assigned on first insert, coalesced by dedup worker. HIN takes precedence when present and trusted.",
+          "key_columns": "id (BIGSERIAL PK), canonical_boat_id (UUID), source_record_key, dealer_id, brand_id, model_id, year, make, model, hin, condition, hours, price, original_list_price, has_tower, actual_ballast_lbs, listing_status, first_seen_at, last_scraped_at"
+        },
+        {
+          "table": "listing_features",
+          "description": "One row per feature per listing. Maps to bridge_listing_features. category CHECK values: tower | ballast | electronics | upholstery | engine_upgrade | trailer | other. 'trailer' was missing from prior ERD \u2014 corrected v1.7.0.",
+          "data_lake_projection": "bridge_listing_features",
+          "category_values": [
+            "tower",
+            "ballast",
+            "electronics",
+            "upholstery",
+            "engine_upgrade",
+            "trailer",
+            "other"
+          ]
+        },
+        {
+          "table": "engine_brands",
+          "description": "Engine manufacturer reference (e.g. Indmar, PCM, Ilmor, Volvo Penta). No Data Lake projection \u2014 Phase 2.",
+          "data_lake_projection": null,
+          "phase": 2
+        },
+        {
+          "table": "engine_models",
+          "description": "One row per engine model/config. drive_type: inboard | outboard | sterndrive | jet. fuel_type: gas | diesel | electric | hybrid. Referenced by boats_models.default_engine_model_id and boat_engine_instances. No Data Lake projection \u2014 Phase 2.",
+          "data_lake_projection": null,
+          "phase": 2
+        },
+        {
+          "table": "boat_engine_instances",
+          "description": "One row per physical engine per listing (twin-engine = 2 rows). engine_model_id nullable until ETL normalizes. No Data Lake projection \u2014 Phase 2.",
+          "data_lake_projection": null,
+          "phase": 2
+        },
+        {
+          "table": "dealer_floorplan_config",
+          "description": "Floorplan credit agreement terms per dealer (lender, credit line, rate index, curtailment schedule). No Data Lake projection \u2014 Phase 2 candidate for Dealer Financial Health mart.",
+          "data_lake_projection": null,
+          "phase": 2
+        },
+        {
+          "table": "inventory_floorplan",
+          "description": "One row per floored unit (1:1 with dealer_inventories). Tracks lender, floored amount, effective rate, manufacturer subsidy window, payoff status. No Data Lake projection \u2014 Phase 2.",
+          "data_lake_projection": null,
+          "phase": 2
+        },
+        {
+          "table": "floorplan_curtailment_events",
+          "description": "Time-series log of curtailment events per floored unit. Powers dealer financial risk analytics. No Data Lake projection \u2014 Phase 2.",
+          "data_lake_projection": null,
+          "phase": 2
+        },
+        {
+          "table": "listing_photos",
+          "description": "Photo ingestion pipeline tracking (child of dealer_inventories). Not projected into Data Lake.",
+          "data_lake_projection": null
+        },
+        {
+          "table": "listing_locations",
+          "description": "PostGIS point geometry per listing (WGS-84 SRID 4326). Not directly projected into Data Lake \u2014 geo captured via dim_geography at zip/state level.",
+          "data_lake_projection": null
+        },
+        {
+          "table": "field_provenance",
+          "description": "Unified per-field source tracking ETL audit table. Not projected into Data Lake.",
+          "data_lake_projection": null
+        },
+        {
+          "table": "write_conflicts",
+          "description": "Audit log of source-priority write conflicts. ETL audit table. Not projected into Data Lake.",
+          "data_lake_projection": null
+        },
+        {
+          "table": "private_sellers",
+          "description": "Minimal identity for private-sale listing posters. directus_id is TEXT/UUID (only L2 table where this is UUID not INTEGER). Not projected into Data Lake \u2014 PII-adjacent; member analytics use dim_member with hashed IDs.",
+          "data_lake_projection": null
+        }
+      ],
+      "sync_notes": [
+        "Sync key convention: Layer 2 integer PK stored as l2_{tablename}_id on the corresponding Data Lake dimension.",
+        "gear_brands.id \u2192 dim_manufacturer.l2_gear_brand_id",
+        "boats_models.id \u2192 dim_boat_model.l2_boats_model_id",
+        "waters.id \u2192 dim_lake.l2_waters_id",
+        "dealer_groups.id \u2192 dim_dealer_network.l2_dealer_group_id",
+        "dealers.id \u2192 dim_dealer.l2_dealer_id",
+        "Model filter dropdown resolves value list from boats_models scoped to selected brand_id \u2014 not from scraped listing coverage.",
+        "authorization_type: Layer 2 lowercase (full | service_only | parts_only | pending | other). Data Lake bridge_dealer_manufacturer corrected to match.",
+        "dim_lake is missing avg_depth_ft and salinity \u2014 add in next sync pass.",
+        "canonical_boat_id (UUID) from dealer_inventories added to dim_boat_instance as durable cross-source identity.",
+        "dim_dealer.primary_manufacturer_key has no direct L2 backing \u2014 must be populated from dealer_brands WHERE is_primary = TRUE during sync.",
+        "Recommended sync frequency: daily for reference tables; near-real-time for is_active and partner status changes."
+      ]
+    },
+    "source_priority_note": "Source priority values mirror Layer 2 source_priority_ref table. Higher integer wins write conflict."
+  },
+  "dimensions": [
+    {
+      "table": "dim_date",
+      "description": "Standard date spine used across all fact tables.",
+      "type": "dimension",
+      "scd_type": 0,
+      "columns": [
+        {
+          "name": "date_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "calendar_date",
+          "type": "DATE",
+          "constraints": [
+            "NOT NULL"
+          ]
+        },
+        {
+          "name": "year",
+          "type": "SMALLINT"
+        },
+        {
+          "name": "quarter",
+          "type": "SMALLINT"
+        },
+        {
+          "name": "month",
+          "type": "SMALLINT"
+        },
+        {
+          "name": "week_of_year",
+          "type": "SMALLINT"
+        },
+        {
+          "name": "day_of_week",
+          "type": "SMALLINT"
+        },
+        {
+          "name": "season",
+          "type": "VARCHAR(20)"
+        },
+        {
+          "name": "is_weekend",
+          "type": "BOOLEAN"
+        }
+      ]
+    },
+    {
+      "table": "dim_geography",
+      "description": "Geographic hierarchy used for regional performance analytics and location-based filtering.",
+      "type": "dimension",
+      "scd_type": 1,
+      "columns": [
+        {
+          "name": "geo_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "zip",
+          "type": "VARCHAR(10)"
+        },
+        {
+          "name": "city",
+          "type": "VARCHAR(100)"
+        },
+        {
+          "name": "county",
+          "type": "VARCHAR(100)"
+        },
+        {
+          "name": "state",
+          "type": "CHAR(2)"
+        },
+        {
+          "name": "state_name",
+          "type": "VARCHAR(50)",
+          "notes": "Full state name, e.g. Florida. Required for Regional tab State column display."
+        },
+        {
+          "name": "region",
+          "type": "VARCHAR(50)",
+          "notes": "e.g. Southeast, Mountain West"
+        },
+        {
+          "name": "dma",
+          "type": "VARCHAR(100)",
+          "notes": "Nielsen DMA for media alignment. Also serves as the dealer territory proxy \u2014 see dim_dealer notes."
+        },
+        {
+          "name": "lat",
+          "type": "DECIMAL(9,6)"
+        },
+        {
+          "name": "lon",
+          "type": "DECIMAL(9,6)"
+        }
+      ]
+    },
+    {
+      "table": "dim_source",
+      "description": "Data provenance tracking for every fact record. Enables source trust hierarchy filtering.",
+      "type": "dimension",
+      "scd_type": 0,
+      "columns": [
+        {
+          "name": "source_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "source_name",
+          "type": "VARCHAR(100)",
+          "notes": "e.g. BoatTrader, YachtWorld, Dealer Feed, Manufacturer, DTC Member"
+        },
+        {
+          "name": "source_type",
+          "type": "VARCHAR(50)",
+          "notes": "Scrape | API | Manual | Member"
+        },
+        {
+          "name": "scrape_domain",
+          "type": "VARCHAR(200)",
+          "notes": "e.g. boattrader.com, yachtworld.com"
+        },
+        {
+          "name": "reliability_tier",
+          "type": "VARCHAR(20)",
+          "notes": "High | Medium | Low"
+        }
+      ]
+    },
+    {
+      "table": "dim_manufacturer",
+      "description": "Boat manufacturers / brands. Root of the boat type hierarchy. Downstream projection of l2_manufacturer (Layer 2 DB). Synced daily.",
+      "type": "dimension",
+      "scd_type": 1,
+      "foreign_keys": [
+        {
+          "column": "brand_tier_key",
+          "references": "dim_brand_tier.brand_tier_key",
+          "nullable": true,
+          "notes": "Segment tier for this manufacturer's primary product line. Resolved via dim_brand_tier price ranges."
+        }
+      ],
+      "columns": [
+        {
+          "name": "manufacturer_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "l2_gear_brand_id",
+          "type": "INT",
+          "nullable": true,
+          "notes": "FK to gear_brands.id (Layer 2). Maintained by daily sync."
+        },
+        {
+          "name": "manufacturer_name",
+          "type": "VARCHAR(100)"
+        },
+        {
+          "name": "brand_tier_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true,
+          "notes": "FK to dim_brand_tier. Replaces the legacy brand_tier VARCHAR field for structured config-driven segmentation."
+        },
+        {
+          "name": "is_wakr_partner",
+          "type": "BOOLEAN",
+          "notes": "Paying data/dashboard partner"
+        },
+        {
+          "name": "slug",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "notes": "From gear_brands.slug. Added v1.7.0."
+        },
+        {
+          "name": "country_of_origin",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "notes": "From gear_brands.country_of_origin. Added v1.7.0."
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "notes": "From gear_brands.is_active. FALSE for discontinued brands. Added v1.7.0."
+        }
+      ],
+      "layer2_source": "gear_brands"
+    },
+    {
+      "table": "dim_brand_tier",
+      "description": "Structured configuration table defining price-based boat market segments (e.g. Entry, Mid, Premium). Each row defines a named tier with a price floor and optional ceiling. Segment for any given listing is resolved by matching listed_price (new boat) against min_price/max_price ranges at query time. Powers the Segment Momentum view on the Overview tab and the Avg Days on Market by Price Tier chart on the Pricing tab.",
+      "type": "dimension",
+      "scd_type": 1,
+      "phase": 1,
+      "columns": [
+        {
+          "name": "brand_tier_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "tier_name",
+          "type": "VARCHAR(50)",
+          "notes": "e.g. Entry | Mid | Premium"
+        },
+        {
+          "name": "min_price",
+          "type": "DECIMAL(10,2)",
+          "notes": "Minimum new-boat list price (inclusive) for this segment"
+        },
+        {
+          "name": "max_price",
+          "type": "DECIMAL(10,2)",
+          "nullable": true,
+          "notes": "Maximum new-boat list price (exclusive). NULL = no upper bound (top-tier segment)."
+        },
+        {
+          "name": "display_order",
+          "type": "SMALLINT",
+          "notes": "Sort order for dashboard segment display (1 = lowest tier)"
+        }
+      ]
+    },
+    {
+      "table": "dim_dealer_network",
+      "description": "Dealer groups and multi-location networks. A dealer network (e.g. a regional chain or franchise group) may operate many individual dealer locations. Each location is a separate dim_dealer row; this table provides the rollup entity for group-level analytics such as total network inventory, network-wide sell-through, and aggregated dealer scorecards.",
+      "type": "dimension",
+      "scd_type": 1,
+      "phase": 1,
+      "columns": [
+        {
+          "name": "dealer_network_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "l2_dealer_group_id",
+          "type": "INT",
+          "nullable": true,
+          "notes": "FK to dealer_groups.id (Layer 2). Added v1.7.0."
+        },
+        {
+          "name": "network_name",
+          "type": "VARCHAR(200)",
+          "notes": "e.g. 'Lake Powell Marine Group', 'Southeast Malibu Dealers'"
+        },
+        {
+          "name": "parent_company",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "notes": "Corporate parent entity if applicable"
+        },
+        {
+          "name": "network_type",
+          "type": "VARCHAR(50)",
+          "notes": "Franchise | Independent | Corporate Chain"
+        },
+        {
+          "name": "is_wakr_partner",
+          "type": "BOOLEAN",
+          "notes": "Network-level Wakr partnership flag"
+        },
+        {
+          "name": "network_join_date",
+          "type": "DATE",
+          "nullable": true
+        }
+      ],
+      "layer2_source": "dealer_groups"
+    },
+    {
+      "table": "dim_dealer",
+      "description": "Individual boat dealer locations. Each physical location is a separate row. Roll up to dealer group via dealer_network_key \u2192 dim_dealer_network. Dealers may represent multiple manufacturers; all brand affiliations are tracked via bridge_dealer_manufacturer. The primary_manufacturer_key is a denormalized convenience FK for the dealer's primary/majority brand.",
+      "type": "dimension",
+      "scd_type": 2,
+      "foreign_keys": [
+        {
+          "column": "geo_key",
+          "references": "dim_geography.geo_key"
+        },
+        {
+          "column": "dealer_network_key",
+          "references": "dim_dealer_network.dealer_network_key",
+          "nullable": true,
+          "notes": "Null for independent single-location dealers"
+        },
+        {
+          "column": "primary_manufacturer_key",
+          "references": "dim_manufacturer.manufacturer_key",
+          "nullable": true,
+          "notes": "Denormalized primary brand; full list via bridge_dealer_manufacturer"
+        }
+      ],
+      "columns": [
+        {
+          "name": "dealer_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "l2_dealer_id",
+          "type": "INT",
+          "nullable": true,
+          "notes": "FK to dealers.id (Layer 2). Added v1.7.0."
+        },
+        {
+          "name": "dealer_id_external",
+          "type": "VARCHAR(100)",
+          "notes": "Source system ID"
+        },
+        {
+          "name": "dealer_name",
+          "type": "VARCHAR(200)"
+        },
+        {
+          "name": "address",
+          "type": "VARCHAR(300)"
+        },
+        {
+          "name": "city",
+          "type": "VARCHAR(100)"
+        },
+        {
+          "name": "state",
+          "type": "CHAR(2)"
+        },
+        {
+          "name": "zip",
+          "type": "VARCHAR(10)"
+        },
+        {
+          "name": "geo_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "dealer_network_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true
+        },
+        {
+          "name": "primary_manufacturer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true,
+          "notes": "Primary brand affiliation \u2014 full multi-brand list in bridge_dealer_manufacturer"
+        },
+        {
+          "name": "is_authorized",
+          "type": "BOOLEAN"
+        },
+        {
+          "name": "is_wakr_partner",
+          "type": "BOOLEAN",
+          "notes": "Enrolled in Dealer Listings product"
+        },
+        {
+          "name": "network_join_date",
+          "type": "DATE"
+        }
+      ],
+      "layer2_source": "dealers"
+    },
+    {
+      "table": "dim_member",
+      "description": "DTC members registered on wakr.co. PII-safe \u2014 hashed IDs only.",
+      "type": "dimension",
+      "scd_type": 2,
+      "phase": 1,
+      "foreign_keys": [
+        {
+          "column": "geo_key",
+          "references": "dim_geography.geo_key"
+        }
+      ],
+      "columns": [
+        {
+          "name": "member_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "member_id_hashed",
+          "type": "VARCHAR(64)",
+          "notes": "SHA-256 hash of source member ID \u2014 no PII"
+        },
+        {
+          "name": "geo_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "join_date",
+          "type": "DATE"
+        },
+        {
+          "name": "skill_level",
+          "type": "VARCHAR(50)",
+          "notes": "Beginner | Intermediate | Advanced"
+        },
+        {
+          "name": "membership_tier",
+          "type": "VARCHAR(50)"
+        }
+      ]
+    },
+    {
+      "table": "dim_lake",
+      "description": "Lakes and waterways where towboats are used. Unique to the watersports market \u2014 supports usage-pattern analytics.",
+      "type": "dimension",
+      "scd_type": 1,
+      "foreign_keys": [
+        {
+          "column": "geo_key",
+          "references": "dim_geography.geo_key"
+        }
+      ],
+      "columns": [
+        {
+          "name": "lake_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "l2_waters_id",
+          "type": "INT",
+          "nullable": true,
+          "notes": "FK to waters.id (Layer 2). Added v1.7.0."
+        },
+        {
+          "name": "lake_name",
+          "type": "VARCHAR(200)"
+        },
+        {
+          "name": "state",
+          "type": "CHAR(2)"
+        },
+        {
+          "name": "geo_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "surface_acres",
+          "type": "INT"
+        },
+        {
+          "name": "lake_type",
+          "type": "VARCHAR(50)",
+          "notes": "Reservoir | Natural | Private"
+        },
+        {
+          "name": "avg_depth_ft",
+          "type": "DECIMAL(6,2)",
+          "nullable": true,
+          "notes": "From waters.avg_depth_ft (Layer 2). Added v1.7.0."
+        },
+        {
+          "name": "salinity",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "notes": "CHECK: fresh | salt | brackish. From waters.salinity (Layer 2). Added v1.7.0."
+        }
+      ],
+      "layer2_source": "waters"
+    },
+    {
+      "table": "dim_boat_model",
+      "description": "The TYPE/TEMPLATE dimension \u2014 one row per make/model/year combination. Represents the manufacturer's base product specification. base_* fields (base_engine_hp, base_ballast_lbs, base_tower_included) are the factory-standard configuration for the model and should not be confused with actual per-instance values, which are stored on dim_boat_instance and bridge_listing_features. Downstream projection of l2_boat_model (Layer 2 DB), enriched with scrape-derived data. Synced daily. The Model filter dropdown on all dashboard tabs resolves its value list from l2_boat_model (Layer 2), not this table, to ensure completeness independent of scraped listing coverage.",
+      "type": "dimension",
+      "scd_type": 1,
+      "foreign_keys": [
+        {
+          "column": "manufacturer_key",
+          "references": "dim_manufacturer.manufacturer_key"
+        }
+      ],
+      "columns": [
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "l2_boats_model_id",
+          "type": "INT",
+          "nullable": true,
+          "notes": "FK to boats_models.id (Layer 2). Maintained by daily sync."
+        },
+        {
+          "name": "manufacturer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "make",
+          "type": "VARCHAR(100)"
+        },
+        {
+          "name": "model",
+          "type": "VARCHAR(200)"
+        },
+        {
+          "name": "model_year",
+          "type": "SMALLINT"
+        },
+        {
+          "name": "boat_type",
+          "type": "VARCHAR(50)",
+          "notes": "Ski | Wake | Surf | Crossover"
+        },
+        {
+          "name": "hull_length_ft",
+          "type": "DECIMAL(5,2)",
+          "notes": "Model-defining spec from manufacturer"
+        },
+        {
+          "name": "engine_type",
+          "type": "VARCHAR(100)",
+          "notes": "Engine family/series name \u2014 model-defining"
+        },
+        {
+          "name": "base_engine_hp",
+          "type": "SMALLINT",
+          "notes": "Factory standard HP for this model. Actual instance HP may differ (upgrades) \u2014 see dim_boat_instance / bridge_listing_features"
+        },
+        {
+          "name": "base_tower_included",
+          "type": "BOOLEAN",
+          "notes": "True if tower is standard on this model. Actual presence on a specific boat tracked on dim_boat_instance"
+        },
+        {
+          "name": "base_ballast_lbs",
+          "type": "INT",
+          "notes": "Factory standard ballast. Actual ballast on a specific boat tracked on dim_boat_instance / bridge_listing_features"
+        },
+        {
+          "name": "msrp",
+          "type": "DECIMAL(10,2)",
+          "notes": "From manufacturer feed when available"
+        },
+        {
+          "name": "default_engine_model_id",
+          "type": "INT",
+          "nullable": true,
+          "notes": "From boats_models.default_engine_model_id \u2192 engine_models.id. Phase 2 only \u2014 engine dimension not yet built. Added v1.7.0."
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "notes": "From boats_models.is_active. FALSE for discontinued model-years. Added v1.7.0."
+        }
+      ],
+      "layer2_source": "boats_models"
+    },
+    {
+      "table": "dim_boat_instance",
+      "description": "The PHYSICAL UNIT dimension \u2014 one row per actual boat (VIN or surrogate). Many instances per model. Stores actual as-delivered/as-listed configuration \u2014 use this for per-hull values that may differ from the model baseline (e.g. upgraded engine, added ballast, aftermarket tower).",
+      "type": "dimension",
+      "scd_type": 2,
+      "foreign_keys": [
+        {
+          "column": "boat_model_key",
+          "references": "dim_boat_model.boat_model_key"
+        },
+        {
+          "column": "dealer_key",
+          "references": "dim_dealer.dealer_key",
+          "nullable": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "boat_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "canonical_boat_id",
+          "type": "UUID",
+          "nullable": true,
+          "notes": "Durable cross-source boat identity UUID from dealer_inventories.canonical_boat_id (Layer 2). Assigned on first insert; coalesced by dedup worker. HIN is gold-standard dedup signal. Added v1.7.0."
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "vin",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "notes": "Nullable \u2014 older/used boats often lack VIN; deduplication uses make+model+year+hours+price-tolerance"
+        },
+        {
+          "name": "is_new",
+          "type": "BOOLEAN"
+        },
+        {
+          "name": "manufacture_date",
+          "type": "DATE",
+          "nullable": true
+        },
+        {
+          "name": "current_hours",
+          "type": "INT",
+          "nullable": true,
+          "notes": "Updated as new listing data arrives"
+        },
+        {
+          "name": "condition",
+          "type": "VARCHAR(20)",
+          "notes": "Excellent | Good | Fair"
+        },
+        {
+          "name": "color",
+          "type": "VARCHAR(100)",
+          "nullable": true
+        },
+        {
+          "name": "actual_engine_hp",
+          "type": "SMALLINT",
+          "nullable": true,
+          "notes": "Actual HP if known and differs from model base; null = assume base model spec"
+        },
+        {
+          "name": "has_tower",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "notes": "Actual tower presence on this unit; null = unknown"
+        },
+        {
+          "name": "actual_ballast_lbs",
+          "type": "INT",
+          "nullable": true,
+          "notes": "Actual ballast on this unit; null = assume base model spec"
+        },
+        {
+          "name": "dealer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true,
+          "notes": "Last known dealer association"
+        }
+      ]
+    },
+    {
+      "table": "dim_competitor_brand",
+      "description": "Competitor brands for Phase 2 competitive overlay analytics.",
+      "type": "dimension",
+      "scd_type": 1,
+      "phase": 2,
+      "columns": [
+        {
+          "name": "competitor_key",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "brand_name",
+          "type": "VARCHAR(100)"
+        },
+        {
+          "name": "brand_tier",
+          "type": "VARCHAR(50)"
+        }
+      ]
+    }
+  ],
+  "facts": [
+    {
+      "table": "fact_listing_snapshot",
+      "description": "Core fact table. One row per listing per day. Backbone of pricing, time-on-market, and inventory level analytics.",
+      "type": "fact",
+      "grain": "one row per listing per day",
+      "phase": 1,
+      "partitioning": "date_key (month) + manufacturer prefix on boat_model_key",
+      "foreign_keys": [
+        {
+          "column": "date_key",
+          "references": "dim_date.date_key"
+        },
+        {
+          "column": "boat_key",
+          "references": "dim_boat_instance.boat_key"
+        },
+        {
+          "column": "boat_model_key",
+          "references": "dim_boat_model.boat_model_key"
+        },
+        {
+          "column": "dealer_key",
+          "references": "dim_dealer.dealer_key",
+          "nullable": true
+        },
+        {
+          "column": "geo_key",
+          "references": "dim_geography.geo_key"
+        },
+        {
+          "column": "source_key",
+          "references": "dim_source.source_key"
+        }
+      ],
+      "cardinality": {
+        "fact_to_dim_date": "many-to-one",
+        "fact_to_dim_boat_instance": "many-to-one",
+        "fact_to_dim_boat_model": "many-to-one",
+        "fact_to_dim_dealer": "many-to-zero-or-one",
+        "fact_to_dim_geography": "many-to-one",
+        "fact_to_dim_source": "many-to-one"
+      },
+      "columns": [
+        {
+          "name": "snapshot_key",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "listing_id",
+          "type": "VARCHAR(200)",
+          "notes": "Source system listing identifier"
+        },
+        {
+          "name": "date_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "boat_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "dealer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true
+        },
+        {
+          "name": "geo_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "source_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "listed_price",
+          "type": "DECIMAL(10,2)"
+        },
+        {
+          "name": "original_list_price",
+          "type": "DECIMAL(10,2)",
+          "notes": "First observed price for this listing"
+        },
+        {
+          "name": "price_change_amount",
+          "type": "DECIMAL(10,2)",
+          "notes": "Delta from prior day snapshot"
+        },
+        {
+          "name": "days_on_market",
+          "type": "INT",
+          "notes": "Computed from first_seen_date"
+        },
+        {
+          "name": "listing_status",
+          "type": "VARCHAR(30)",
+          "notes": "Active | Removed | Price Reduced"
+        },
+        {
+          "name": "is_new_listing",
+          "type": "BOOLEAN",
+          "notes": "True on first day seen"
+        },
+        {
+          "name": "is_removed",
+          "type": "BOOLEAN",
+          "notes": "True on last day seen \u2014 inferred sold or delisted"
+        },
+        {
+          "name": "mileage_hours",
+          "type": "INT",
+          "nullable": true
+        },
+        {
+          "name": "condition_notes",
+          "type": "VARCHAR(500)",
+          "nullable": true
+        },
+        {
+          "name": "listing_url",
+          "type": "VARCHAR(500)"
+        },
+        {
+          "name": "first_seen_date",
+          "type": "DATE"
+        },
+        {
+          "name": "last_seen_date",
+          "type": "DATE",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "table": "fact_estimated_sale",
+      "description": "One row per inferred sale event. A listing removed after active status is treated as a likely sale. confidence_score allows downstream analytics to discount low-confidence records.",
+      "type": "fact",
+      "grain": "one row per inferred sale event",
+      "phase": 1,
+      "foreign_keys": [
+        {
+          "column": "date_key",
+          "references": "dim_date.date_key"
+        },
+        {
+          "column": "boat_key",
+          "references": "dim_boat_instance.boat_key"
+        },
+        {
+          "column": "boat_model_key",
+          "references": "dim_boat_model.boat_model_key"
+        },
+        {
+          "column": "dealer_key",
+          "references": "dim_dealer.dealer_key",
+          "nullable": true
+        },
+        {
+          "column": "geo_key",
+          "references": "dim_geography.geo_key"
+        },
+        {
+          "column": "source_key",
+          "references": "dim_source.source_key"
+        }
+      ],
+      "cardinality": {
+        "fact_to_dim_date": "many-to-one",
+        "fact_to_dim_boat_instance": "many-to-one",
+        "fact_to_dim_boat_model": "many-to-one",
+        "fact_to_dim_dealer": "many-to-zero-or-one",
+        "fact_to_dim_geography": "many-to-one",
+        "fact_to_dim_source": "many-to-one"
+      },
+      "columns": [
+        {
+          "name": "est_sale_key",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "listing_id",
+          "type": "VARCHAR(200)"
+        },
+        {
+          "name": "date_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "boat_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "dealer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true
+        },
+        {
+          "name": "geo_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "source_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "final_listed_price",
+          "type": "DECIMAL(10,2)"
+        },
+        {
+          "name": "days_on_market",
+          "type": "INT"
+        },
+        {
+          "name": "confidence_score",
+          "type": "DECIMAL(4,3)",
+          "notes": "0.000\u20131.000; sale vs. delisting confidence"
+        },
+        {
+          "name": "sale_type",
+          "type": "VARCHAR(20)",
+          "notes": "New | Used"
+        }
+      ]
+    },
+    {
+      "table": "fact_listing_engagement",
+      "description": "Impressions, clicks, and leads for listings actively hosted on the Wakr platform. Powers Dealer Performance Indicators, Model-Level Impressions, and Lead Activity Tracking.",
+      "type": "fact",
+      "grain": "one row per listing per day",
+      "phase": 1,
+      "foreign_keys": [
+        {
+          "column": "date_key",
+          "references": "dim_date.date_key"
+        },
+        {
+          "column": "boat_key",
+          "references": "dim_boat_instance.boat_key"
+        },
+        {
+          "column": "boat_model_key",
+          "references": "dim_boat_model.boat_model_key"
+        },
+        {
+          "column": "dealer_key",
+          "references": "dim_dealer.dealer_key"
+        }
+      ],
+      "cardinality": {
+        "fact_to_dim_date": "many-to-one",
+        "fact_to_dim_boat_instance": "many-to-one",
+        "fact_to_dim_boat_model": "many-to-one",
+        "fact_to_dim_dealer": "many-to-one"
+      },
+      "columns": [
+        {
+          "name": "engagement_key",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "listing_id",
+          "type": "VARCHAR(200)"
+        },
+        {
+          "name": "date_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "boat_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "dealer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "impressions",
+          "type": "INT"
+        },
+        {
+          "name": "clicks",
+          "type": "INT"
+        },
+        {
+          "name": "leads_generated",
+          "type": "INT"
+        },
+        {
+          "name": "click_through_rate",
+          "type": "DECIMAL(6,4)",
+          "notes": "Computed: clicks / impressions"
+        }
+      ]
+    },
+    {
+      "table": "fact_member_activity",
+      "description": "Activity from wakr.co DTC members \u2014 boat ownership, lake visits, lessons, dealer touchpoints.",
+      "type": "fact",
+      "grain": "one row per member activity event",
+      "phase": 2,
+      "foreign_keys": [
+        {
+          "column": "date_key",
+          "references": "dim_date.date_key"
+        },
+        {
+          "column": "member_key",
+          "references": "dim_member.member_key"
+        },
+        {
+          "column": "boat_key",
+          "references": "dim_boat_instance.boat_key",
+          "nullable": true
+        },
+        {
+          "column": "boat_model_key",
+          "references": "dim_boat_model.boat_model_key"
+        },
+        {
+          "column": "dealer_key",
+          "references": "dim_dealer.dealer_key",
+          "nullable": true
+        },
+        {
+          "column": "lake_key",
+          "references": "dim_lake.lake_key",
+          "nullable": true
+        }
+      ],
+      "cardinality": {
+        "fact_to_dim_date": "many-to-one",
+        "fact_to_dim_member": "many-to-one",
+        "fact_to_dim_boat_instance": "many-to-zero-or-one",
+        "fact_to_dim_boat_model": "many-to-one",
+        "fact_to_dim_dealer": "many-to-zero-or-one",
+        "fact_to_dim_lake": "many-to-zero-or-one"
+      },
+      "columns": [
+        {
+          "name": "activity_key",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "date_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "member_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "boat_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "dealer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true
+        },
+        {
+          "name": "lake_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true
+        },
+        {
+          "name": "activity_type",
+          "type": "VARCHAR(50)",
+          "notes": "Ride | Lesson | Service | Dealer Visit"
+        },
+        {
+          "name": "is_owner",
+          "type": "BOOLEAN"
+        }
+      ]
+    },
+    {
+      "table": "fact_marketplace_behavior",
+      "description": "Browsing, comparison, and purchase events on the Wakr marketplace. Enables demand shift detection before inventory data reflects it. Anonymous sessions have no member_key.",
+      "type": "fact",
+      "grain": "one row per marketplace event",
+      "phase": 2,
+      "foreign_keys": [
+        {
+          "column": "date_key",
+          "references": "dim_date.date_key"
+        },
+        {
+          "column": "member_key",
+          "references": "dim_member.member_key",
+          "nullable": true
+        },
+        {
+          "column": "boat_model_key",
+          "references": "dim_boat_model.boat_model_key"
+        },
+        {
+          "column": "geo_key",
+          "references": "dim_geography.geo_key"
+        }
+      ],
+      "cardinality": {
+        "fact_to_dim_date": "many-to-one",
+        "fact_to_dim_member": "many-to-zero-or-one",
+        "fact_to_dim_boat_model": "many-to-one",
+        "fact_to_dim_geography": "many-to-one"
+      },
+      "columns": [
+        {
+          "name": "behavior_key",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ]
+        },
+        {
+          "name": "date_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "member_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ],
+          "nullable": true
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "geo_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "event_type",
+          "type": "VARCHAR(50)",
+          "notes": "View | Compare | Save | Mention | Purchase"
+        },
+        {
+          "name": "session_id",
+          "type": "VARCHAR(100)"
+        }
+      ]
+    }
+  ],
+  "bridges": [
+    {
+      "table": "bridge_dealer_manufacturer",
+      "description": "Many-to-many affiliation between dealer locations and manufacturers/brands. A dealer may be an authorized dealer for multiple brands (e.g. Malibu + Axis + Centurion). The is_primary flag identifies the dealer's primary brand for convenience denormalization. Use this table for any multi-brand dealer queries; the primary_manufacturer_key FK on dim_dealer is a denormalized shortcut for single-brand lookups.",
+      "type": "bridge",
+      "foreign_keys": [
+        {
+          "column": "dealer_key",
+          "references": "dim_dealer.dealer_key"
+        },
+        {
+          "column": "manufacturer_key",
+          "references": "dim_manufacturer.manufacturer_key"
+        }
+      ],
+      "cardinality": {
+        "bridge_to_dim_dealer": "many-to-one",
+        "bridge_to_dim_manufacturer": "many-to-one"
+      },
+      "columns": [
+        {
+          "name": "dealer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "manufacturer_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "is_primary",
+          "type": "BOOLEAN",
+          "notes": "True for the dealer's dominant brand"
+        },
+        {
+          "name": "is_authorized",
+          "type": "BOOLEAN",
+          "notes": "Manufacturer-confirmed authorized dealer status"
+        },
+        {
+          "name": "authorization_type",
+          "type": "VARCHAR(50)",
+          "notes": "CHECK (Layer 2 values): full | service_only | parts_only | pending | other. CORRECTED v1.7.0 \u2014 prior ERD had Full | Limited | Service-Only."
+        },
+        {
+          "name": "effective_date",
+          "type": "DATE"
+        },
+        {
+          "name": "expiry_date",
+          "type": "DATE",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "table": "bridge_listing_features",
+      "description": "Multi-valued listing features extracted from scrape text (e.g. tower type, ballast configuration, electronics). One listing \u2192 many feature rows. Used for comparable listing matching in the Trade-In & Valuation Application.",
+      "type": "bridge",
+      "foreign_keys": [
+        {
+          "column": "boat_model_key",
+          "references": "dim_boat_model.boat_model_key"
+        }
+      ],
+      "cardinality": {
+        "bridge_to_dim_boat_model": "many-to-one"
+      },
+      "columns": [
+        {
+          "name": "listing_id",
+          "type": "VARCHAR(200)"
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK"
+          ]
+        },
+        {
+          "name": "feature_category",
+          "type": "VARCHAR(100)",
+          "notes": "Maps to listing_features.category (Layer 2). CHECK values: tower | ballast | electronics | upholstery | engine_upgrade | trailer | other. CORRECTED v1.7.0 \u2014 'trailer' was missing."
+        },
+        {
+          "name": "feature_value",
+          "type": "VARCHAR(200)"
+        }
+      ]
+    }
+  ],
+  "marts": [
+    {
+      "table": "mart_daily_snapshot",
+      "description": "NEW in v1.6.0. Lightweight daily-grain pre-aggregation by make/model/state. Primary purpose is to efficiently serve T7 and exact T30 window queries without scanning raw fact tables. Also used as the basis for T90, YTD, and L12M rollups where monthly mart precision is insufficient. Replaces the prior weekly grain on mart_inventory_summary for short-window queries.",
+      "grain": "make / model / state / day",
+      "grain_keys": [
+        "manufacturer_key",
+        "boat_model_key",
+        "state",
+        "date_key"
+      ],
+      "source_facts": [
+        "fact_listing_snapshot",
+        "fact_estimated_sale"
+      ],
+      "phase": 1,
+      "parameters_supported": [
+        "time_range",
+        "inventory_type",
+        "make",
+        "model",
+        "state"
+      ],
+      "supported_time_ranges": [
+        "T7",
+        "T30",
+        "T90",
+        "YTD",
+        "L12M"
+      ],
+      "time_range_notes": "T7 and T30 query this mart directly by filtering date_key to the trailing N days. T90, YTD, and L12M aggregate multiple rows from this mart. Monthly marts (pricing, regional) remain the preferred source for month-aligned windows.",
+      "computed_columns": [
+        {
+          "name": "date_key",
+          "type": "INT",
+          "constraints": [
+            "FK \u2192 dim_date.date_key"
+          ]
+        },
+        {
+          "name": "manufacturer_key",
+          "type": "INT",
+          "constraints": [
+            "FK \u2192 dim_manufacturer.manufacturer_key"
+          ]
+        },
+        {
+          "name": "boat_model_key",
+          "type": "INT",
+          "constraints": [
+            "FK \u2192 dim_boat_model.boat_model_key"
+          ]
+        },
+        {
+          "name": "state",
+          "type": "CHAR(2)",
+          "notes": "State abbreviation. Joins to dim_geography for full name."
+        },
+        {
+          "name": "inventory_type",
+          "type": "VARCHAR(10)",
+          "notes": "New | Used | Combined \u2014 pre-aggregated for each value to avoid runtime filtering"
+        },
+        {
+          "name": "active_listings",
+          "type": "INT",
+          "notes": "Count of active listings as of this date for the make/model/state slice."
+        },
+        {
+          "name": "new_listings",
+          "type": "INT",
+          "notes": "Count of listings where is_new_listing = true on this date. Used for inventory_added aggregation across any window."
+        },
+        {
+          "name": "removed_listings",
+          "type": "INT",
+          "notes": "Count of listings where is_removed = true on this date. Used as proxy for sales across any window."
+        },
+        {
+          "name": "avg_dom",
+          "type": "DECIMAL(6,2)",
+          "notes": "Average days_on_market for active listings on this date."
+        },
+        {
+          "name": "avg_list_price",
+          "type": "DECIMAL(10,2)",
+          "notes": "Average listed_price for active listings on this date."
+        },
+        {
+          "name": "median_list_price",
+          "type": "DECIMAL(10,2)",
+          "notes": "Median listed_price for active listings on this date."
+        },
+        {
+          "name": "dom_bucket_0_7",
+          "type": "INT",
+          "notes": "Active listing count with DOM 0\u20137 days."
+        },
+        {
+          "name": "dom_bucket_8_15",
+          "type": "INT",
+          "notes": "Active listing count with DOM 8\u201315 days."
+        },
+        {
+          "name": "dom_bucket_16_30",
+          "type": "INT",
+          "notes": "Active listing count with DOM 16\u201330 days."
+        },
+        {
+          "name": "dom_bucket_31_60",
+          "type": "INT",
+          "notes": "Active listing count with DOM 31\u201360 days."
+        },
+        {
+          "name": "dom_bucket_60_plus",
+          "type": "INT",
+          "notes": "Active listing count with DOM 60+ days."
+        }
+      ]
+    },
+    {
+      "table": "mart_inventory_summary",
+      "description": "Pre-aggregated active listing counts, inventory turnover, and days-on-market distribution by make/model/region/week. Powers the Active Listings Monitor, Days on Market Distribution chart, Total Inventory Trend line chart, and Inventory & Velocity table on the Inventory tab. Grain expanded in v1.5.0 to include boat_model_key, enabling Model filter on the Inventory tab.",
+      "grain": "make / model / state / month (monthly pre-agg); use mart_daily_snapshot for sub-monthly windows",
+      "grain_keys": [
+        "manufacturer_key",
+        "boat_model_key",
+        "geo_key",
+        "week_key"
+      ],
+      "source_facts": [
+        "fact_listing_snapshot",
+        "fact_estimated_sale"
+      ],
+      "phase": 1,
+      "parameters_supported": [
+        "time_range",
+        "inventory_type",
+        "make",
+        "model"
+      ],
+      "dashboard_widgets": [
+        "KPI: Active Listings",
+        "KPI: Boats Sold (30D)",
+        "KPI: Inventory Added (T30)",
+        "KPI: Avg Days on Market",
+        "Chart: Days on Market Distribution (bar, 5 buckets)",
+        "Chart: Total Inventory Trend (line, active listings over time)",
+        "Table: Inventory & Velocity (Model-Year / Avg DOM / Active Units / Boats Sold T30 / Momentum)"
+      ],
+      "computed_columns": [
+        {
+          "name": "active_listings",
+          "type": "INT",
+          "notes": "Count of listings with listing_status = Active as of period end. Drives the Active Listings KPI box."
+        },
+        {
+          "name": "active_listings_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of user company's active_listings vs all-makes market average. ((user_value - market_avg) / market_avg). Positive = above market. Drives comparison indicator on Active Listings KPI box."
+        },
+        {
+          "name": "boats_sold_t30",
+          "type": "INT",
+          "notes": "Count of inferred sales in trailing 30 days. Drives the Boats Sold (30D) KPI box."
+        },
+        {
+          "name": "boats_sold_t30_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of user company's boats_sold_t30 vs all-makes market average. Drives comparison indicator on Boats Sold (30D) KPI box."
+        },
+        {
+          "name": "inventory_added_t30",
+          "type": "INT",
+          "notes": "Count of new listings (is_new_listing = true) in trailing 30 days. Drives the Inventory Added (T30) KPI box."
+        },
+        {
+          "name": "inventory_added_t30_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of user company's inventory_added_t30 vs all-makes market average. Drives comparison indicator on Inventory Added (T30) KPI box."
+        },
+        {
+          "name": "avg_dom",
+          "type": "DECIMAL(6,2)",
+          "notes": "Average days_on_market across active listings for the period. Drives the Avg Days on Market KPI box."
+        },
+        {
+          "name": "avg_dom_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of user company's avg_dom vs all-makes market average. Note: positive value means user's DOM is higher (slower) than market. Drives comparison indicator on Avg Days on Market KPI box."
+        },
+        {
+          "name": "active_units",
+          "type": "INT",
+          "notes": "Alias / grain-specific count of active listings for the model row in the Inventory & Velocity table. Equivalent to active_listings at model grain."
+        },
+        {
+          "name": "sell_through_rate",
+          "type": "DECIMAL(6,4)",
+          "notes": "units_sold / active_listings for the period. Demand defined as boats sold count."
+        },
+        {
+          "name": "mom_listing_change_pct",
+          "type": "DECIMAL(6,4)",
+          "notes": "Month-over-month % change in active listing count. Drives the MoM Change KPI on Inventory tab."
+        },
+        {
+          "name": "days_supply",
+          "type": "DECIMAL(8,2)",
+          "notes": "active_listings / (boats_sold_t30 / 30.0). Displayed per state on the Regional tab Days Supply column."
+        },
+        {
+          "name": "dom_bucket_0_7",
+          "type": "INT",
+          "notes": "Count of active listings with days_on_market 0\u20137 days. Drives the 0\u20137d bar in the Days on Market Distribution chart."
+        },
+        {
+          "name": "dom_bucket_8_15",
+          "type": "INT",
+          "notes": "Count of active listings with days_on_market 8\u201315 days. Drives the 8\u201315d bar in the Days on Market Distribution chart."
+        },
+        {
+          "name": "dom_bucket_16_30",
+          "type": "INT",
+          "notes": "Count of active listings with days_on_market 16\u201330 days. Drives the 16\u201330d bar in the Days on Market Distribution chart."
+        },
+        {
+          "name": "dom_bucket_31_60",
+          "type": "INT",
+          "notes": "Count of active listings with days_on_market 31\u201360 days. Drives the 31\u201360d bar in the Days on Market Distribution chart."
+        },
+        {
+          "name": "dom_bucket_60_plus",
+          "type": "INT",
+          "notes": "Count of active listings with days_on_market > 60 days. Drives the 60+d bar in the Days on Market Distribution chart."
+        },
+        {
+          "name": "momentum_status",
+          "type": "VARCHAR(20)",
+          "notes": "RESOLVED (v1.5.0): Accelerating = avg_dom trending down MoM AND sell_through_rate trending up; Slowing = avg_dom trending up MoM OR sell_through_rate trending down; Stable = neither threshold met. Drives the Momentum column in the Inventory & Velocity table."
+        },
+        {
+          "name": "aging_risk_level",
+          "type": "VARCHAR(20)",
+          "notes": "Aging risk classification: Elevated | Moderate | Low. Derived from avg_dom vs configurable thresholds."
+        }
+      ],
+      "supported_time_ranges": [
+        "T7",
+        "T30",
+        "T90",
+        "YTD",
+        "L12M"
+      ],
+      "time_range_notes": "T7 and T30 sourced from mart_daily_snapshot. T90, YTD, L12M computed by aggregating mart_daily_snapshot rows or rolling up monthly mart rows. boats_sold_t30, inventory_added_t30, and avg_dom computed columns are defined for T30; equivalent _t7, _t90, _ytd, _l12m variants are resolved at query time from mart_daily_snapshot rather than stored as separate columns to avoid column explosion."
+    },
+    {
+      "table": "mart_regional_summary",
+      "description": "NEW in v1.5.0. State-level market rollup supporting the Regional tab. One row per state / make / model / month. Powers the four KPI boxes (Fastest Market, Slowest Market, Top Growth State, Sales Trends), the State Market Map choropleth, State Market Leaders top/bottom rankings, and the State Market Overview detail table. Grain includes boat_model_key to support the Model filter parameter added in v1.5.0.",
+      "grain": "state / make / model / month",
+      "grain_keys": [
+        "state",
+        "manufacturer_key",
+        "boat_model_key",
+        "month_key"
+      ],
+      "source_facts": [
+        "fact_listing_snapshot",
+        "fact_estimated_sale"
+      ],
+      "phase": 1,
+      "parameters_supported": [
+        "time_range",
+        "inventory_type",
+        "make",
+        "model",
+        "state"
+      ],
+      "dashboard_widgets": [
+        "KPI: Fastest Market (state abbreviation + avg DOM + % vs national avg)",
+        "KPI: Slowest Market (state abbreviation + avg DOM + % vs national avg)",
+        "KPI: Top Growth State (state abbreviation + YoY supply % change)",
+        "KPI: Sales Trends (count of states with rising vs falling sales)",
+        "Widget: State Market Map (choropleth, metric selector: Velocity/Avg DOM/Listings)",
+        "Widget: State Market Leaders \u2014 Top States by Boats Sold (rank, state, units, listing count)",
+        "Widget: State Market Leaders \u2014 Lowest Sales States (rank, state, units, listing count)",
+        "Table: State Market Overview (State, Listings, Avg DOM, Boats Sold T30, % Market, Average Price)"
+      ],
+      "computed_columns": [
+        {
+          "name": "state",
+          "type": "CHAR(2)",
+          "notes": "State abbreviation. Joins to dim_geography.state for full state name display."
+        },
+        {
+          "name": "listings",
+          "type": "INT",
+          "notes": "Active listing count for the state/make/model/period. Drives the Listings column in the State Market Overview table and State Market Leaders listing counts."
+        },
+        {
+          "name": "avg_dom",
+          "type": "DECIMAL(6,2)",
+          "notes": "Average days on market for the state. Drives the Avg Days on Market column in State Market Overview and the Fastest/Slowest Market KPI boxes. Color-coded by dom_status thresholds."
+        },
+        {
+          "name": "avg_dom_vs_national_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "((state_avg_dom - national_avg_dom) / national_avg_dom). Negative = faster than national avg (displayed as '35% faster than national avg' on Fastest Market KPI). Positive = slower (displayed as '48% above national avg' on Slowest Market KPI)."
+        },
+        {
+          "name": "boats_sold_t30",
+          "type": "INT",
+          "notes": "Inferred sales count in trailing 30 days for the state. Drives Boats Sold (T30) column in State Market Overview and ranking values in State Market Leaders."
+        },
+        {
+          "name": "boats_sold_t30_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of state's boats_sold_t30 vs all-states average for the selected make/model. Drives comparison indicator on the Sales Trends KPI."
+        },
+        {
+          "name": "pct_market",
+          "type": "DECIMAL(6,4)",
+          "notes": "State's share of total national listings for the selected make/model/period. Drives the % Market column in State Market Overview (e.g. FL = 15.2%)."
+        },
+        {
+          "name": "avg_price",
+          "type": "DECIMAL(10,2)",
+          "notes": "Average listed price for active listings in the state. Drives the Average Price column in State Market Overview."
+        },
+        {
+          "name": "avg_price_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of state avg_price vs national average price for the selected make/model. Drives comparison indicator on avg_price."
+        },
+        {
+          "name": "yoy_supply_change_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Year-over-year % change in listing count for the state. Drives the Top Growth State KPI box value (e.g. TX +9.1%)."
+        },
+        {
+          "name": "dom_status",
+          "type": "VARCHAR(20)",
+          "notes": "Velocity classification for map color-coding: Fast (<15d) | Healthy (15\u201322d) | Slow (23\u201330d) | Very Slow (30d+). Applied per state row."
+        },
+        {
+          "name": "sales_trend_direction",
+          "type": "VARCHAR(10)",
+          "notes": "Rising | Falling | Stable. MoM direction of boats_sold_t30 for the state. Used to compute the Sales Trends KPI count (e.g. 8 rising / 10 falling)."
+        },
+        {
+          "name": "fastest_market_state",
+          "type": "CHAR(2)",
+          "notes": "Derived/flagged column identifying the state with the lowest avg_dom in the period for the selected make/model. Drives the Fastest Market KPI. Computed at mart refresh."
+        },
+        {
+          "name": "slowest_market_state",
+          "type": "CHAR(2)",
+          "notes": "Derived/flagged column identifying the state with the highest avg_dom in the period for the selected make/model. Drives the Slowest Market KPI. Computed at mart refresh."
+        }
+      ],
+      "supported_time_ranges": [
+        "T30",
+        "T90",
+        "YTD",
+        "L12M"
+      ],
+      "time_range_notes": "T7 not supported \u2014 regional state-level aggregations require sufficient sample size; minimum window is T30. T90, YTD, L12M computed by rolling up monthly rows. yoy_supply_change_pct always compares the equivalent period last year regardless of selected window."
+    },
+    {
+      "table": "mart_pricing_trends",
+      "description": "Pre-aggregated advertised price distributions, median prices, price movement, and price-band breakdowns by make/model/region/month. Powers the Pricing tab KPI boxes, Avg Days on Market by Price Tier chart, Listings by Price Tier chart, and Model Price Efficiency table. Grain includes boat_model_key to support Model filter added in v1.5.0.",
+      "grain": "make / model / region / month",
+      "grain_keys": [
+        "manufacturer_key",
+        "boat_model_key",
+        "geo_key",
+        "month_key"
+      ],
+      "source_facts": [
+        "fact_listing_snapshot"
+      ],
+      "phase": 1,
+      "parameters_supported": [
+        "time_range",
+        "inventory_type",
+        "make",
+        "model"
+      ],
+      "dashboard_widgets": [
+        "KPI: Avg List Price",
+        "KPI: Median Price",
+        "KPI: Month over Month Price Change",
+        "KPI: Top Selling Band (price range label + units sold)",
+        "Chart: Avg Days on Market by Price Tier (bar, 6 price bands, color-coded by DOM status)",
+        "Chart: Listings by Price Tier (horizontal bar, 6 price bands, unit counts)",
+        "Table: Model Price Efficiency (Model-Year, Avg List Price, Price Band, Avg DOM, Listings count)"
+      ],
+      "computed_columns": [
+        {
+          "name": "avg_list_price",
+          "type": "DECIMAL(10,2)",
+          "notes": "Average listed_price for active listings in the period. Drives the Avg List Price KPI box."
+        },
+        {
+          "name": "avg_list_price_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of user company's avg_list_price vs all-makes market average. Drives comparison indicator on Avg List Price KPI box."
+        },
+        {
+          "name": "median_list_price",
+          "type": "DECIMAL(10,2)",
+          "notes": "Median listed_price for active listings in the period. Mid-market indicator. Drives the Median Price KPI box."
+        },
+        {
+          "name": "median_list_price_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of user company's median_list_price vs all-makes market average. Drives comparison indicator on Median Price KPI box."
+        },
+        {
+          "name": "mom_price_change_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Month-over-month % change in avg_list_price vs prior month. Drives the Month over Month Price Change KPI box (e.g. -4.1%)."
+        },
+        {
+          "name": "mom_price_change_pct_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % of user company's mom_price_change_pct vs all-makes market average rate of change. Drives comparison indicator on MoM Price Change KPI box."
+        },
+        {
+          "name": "top_selling_band_low",
+          "type": "DECIMAL(10,2)",
+          "notes": "Lower bound of the price band with the highest boats_sold_t30 count. Together with top_selling_band_high, drives the Top Selling Band KPI label (e.g. '$140\u2013160k')."
+        },
+        {
+          "name": "top_selling_band_high",
+          "type": "DECIMAL(10,2)",
+          "notes": "Upper bound of the top-selling price band. NULL if the band is open-ended (e.g. Over $140k)."
+        },
+        {
+          "name": "top_selling_band_units",
+          "type": "INT",
+          "notes": "Count of units sold in the top selling band for the period. Drives the sub-label on the Top Selling Band KPI (e.g. '134 units sold this month')."
+        },
+        {
+          "name": "top_selling_band_vs_market_pct",
+          "type": "DECIMAL(7,4)",
+          "notes": "Comparison % indicating whether user company's top selling band volume is above or below market average for that band. Drives comparison indicator on Top Selling Band KPI box."
+        },
+        {
+          "name": "avg_dom_band_under_60k",
+          "type": "DECIMAL(6,2)",
+          "notes": "Avg days on market for listings priced under $60k. Drives the Under $60k bar in the Avg Days on Market by Price Tier chart."
+        },
+        {
+          "name": "avg_dom_band_60_80k",
+          "type": "DECIMAL(6,2)",
+          "notes": "Avg DOM for $60k\u2013$80k price band. Drives the $60\u201380k bar."
+        },
+        {
+          "name": "avg_dom_band_80_100k",
+          "type": "DECIMAL(6,2)",
+          "notes": "Avg DOM for $80k\u2013$100k price band."
+        },
+        {
+          "name": "avg_dom_band_100_120k",
+          "type": "DECIMAL(6,2)",
+          "notes": "Avg DOM for $100k\u2013$120k price band."
+        },
+        {
+          "name": "avg_dom_band_120_140k",
+          "type": "DECIMAL(6,2)",
+          "notes": "Avg DOM for $120k\u2013$140k price band."
+        },
+        {
+          "name": "avg_dom_band_over_140k",
+          "type": "DECIMAL(6,2)",
+          "notes": "Avg DOM for listings priced over $140k."
+        },
+        {
+          "name": "listing_count_band_under_60k",
+          "type": "INT",
+          "notes": "Active listing count for the Under $60k price band. Drives the Under $60k bar in the Listings by Price Tier chart."
+        },
+        {
+          "name": "listing_count_band_60_80k",
+          "type": "INT",
+          "notes": "Active listing count for $60k\u2013$80k band."
+        },
+        {
+          "name": "listing_count_band_80_100k",
+          "type": "INT",
+          "notes": "Active listing count for $80k\u2013$100k band."
+        },
+        {
+          "name": "listing_count_band_100_120k",
+          "type": "INT",
+          "notes": "Active listing count for $100k\u2013$120k band."
+        },
+        {
+          "name": "listing_count_band_120_140k",
+          "type": "INT",
+          "notes": "Active listing count for $120k\u2013$140k band."
+        },
+        {
+          "name": "listing_count_band_over_140k",
+          "type": "INT",
+          "notes": "Active listing count for Over $140k band."
+        },
+        {
+          "name": "price_band_label",
+          "type": "VARCHAR(30)",
+          "notes": "Display label for the model's primary price band (e.g. '$73k\u2013$85k'). Drives the Price Band column in the Model Price Efficiency table. Derived from min/max of listed_price for the model in the period."
+        },
+        {
+          "name": "pct_listings_with_price_cut",
+          "type": "DECIMAL(6,4)",
+          "notes": "Fraction of active listings where price_change_amount < 0 (or listing_status = 'Price Reduced'). Drives the 'Listings w/ Price Cut' KPI on Pricing tab."
+        },
+        {
+          "name": "discount_pressure_pct",
+          "type": "DECIMAL(6,4)",
+          "notes": "avg((original_list_price - listed_price) / original_list_price) for listings with price cuts. Drives the Discount Pressure column on Model Price Efficiency table."
+        }
+      ],
+      "supported_time_ranges": [
+        "T30",
+        "T90",
+        "YTD",
+        "L12M"
+      ],
+      "time_range_notes": "T7 not supported at pricing mart level \u2014 price distributions require sufficient sample size; minimum window is T30. T90, YTD, L12M computed by averaging/aggregating the appropriate monthly rows. mom_price_change_pct always refers to the most recent calendar month vs prior month regardless of selected window."
+    },
+    {
+      "table": "mart_time_on_market",
+      "description": "Average and percentile days-on-market by make/model/region/month with aging distribution buckets.",
+      "grain": "make / model / region / month",
+      "grain_keys": [
+        "manufacturer_key",
+        "boat_model_key",
+        "geo_key",
+        "month_key"
+      ],
+      "source_facts": [
+        "fact_listing_snapshot"
+      ],
+      "phase": 1,
+      "parameters_supported": [
+        "time_range",
+        "inventory_type",
+        "make",
+        "model"
+      ],
+      "computed_columns": [
+        {
+          "name": "dom_status",
+          "type": "VARCHAR(20)",
+          "notes": "Velocity-speed classification based on avg_dom thresholds: Fast (<15d) | Healthy (15-22d) | Slow (23-30d) | Very Slow (30d+). Drives the Pricing tab legend and color indicators across all tabs."
+        },
+        {
+          "name": "aging_risk_level",
+          "type": "VARCHAR(20)",
+          "notes": "Aging risk classification for Inventory tab Aging Risk column: Elevated | Moderate | Low. Derived from avg_dom vs configurable thresholds."
+        }
+      ],
+      "supported_time_ranges": [
+        "T7",
+        "T30",
+        "T90",
+        "YTD",
+        "L12M"
+      ],
+      "time_range_notes": "T7 sourced from mart_daily_snapshot avg_dom. All other windows computed from monthly mart rows or daily snapshot rollups."
+    },
+    {
+      "table": "mart_dealer_scorecard",
+      "description": "Dealer-location and dealer-network performance metrics benchmarked against network averages: inventory count, avg days-on-market, leads, impressions, estimated sell-through. Supports both individual location view and rolled-up dealer_network_key grouping. Dealers tab not yet implemented \u2014 mart retained for Phase 1 readiness.",
+      "grain": "dealer / month",
+      "source_facts": [
+        "fact_listing_snapshot",
+        "fact_listing_engagement",
+        "fact_estimated_sale"
+      ],
+      "phase": 1,
+      "computed_columns": [
+        {
+          "name": "delta_week_units",
+          "type": "INT",
+          "notes": "Week-over-week change in units sold for the dealer. Requires weekly sub-aggregation from fact_listing_snapshot / fact_estimated_sale. Drives the Delta Week column on Dealers tab."
+        },
+        {
+          "name": "market_share_pct",
+          "type": "DECIMAL(6,4)",
+          "notes": "PENDING USER RESEARCH: Dealer network's share of total market listings per state. Methodology (numerator/denominator definition) to be confirmed before implementation. Drives Market Share by State chart on Dealers tab."
+        }
+      ]
+    },
+    {
+      "table": "mart_estimated_velocity",
+      "description": "Estimated sell-through counts and pace by make/model/region/month. Powers velocity rankings including Demand-Supply Ratio, Momentum, and Avg DOM trend.",
+      "grain": "make / model / region / month",
+      "grain_keys": [
+        "manufacturer_key",
+        "boat_model_key",
+        "geo_key",
+        "month_key"
+      ],
+      "source_facts": [
+        "fact_estimated_sale",
+        "fact_listing_snapshot"
+      ],
+      "phase": 1,
+      "parameters_supported": [
+        "time_range",
+        "inventory_type",
+        "make",
+        "model"
+      ],
+      "computed_columns": [
+        {
+          "name": "demand_supply_ratio",
+          "type": "DECIMAL(8,4)",
+          "notes": "boats_sold_t30 / active_listings. Demand is defined as count of boats sold over the measurement period. Drives the Demand-Supply Ratio column on the Velocity tab."
+        },
+        {
+          "name": "momentum_status",
+          "type": "VARCHAR(20)",
+          "notes": "RESOLVED (v1.5.0): Accelerating | Stable | Slowing. See schema notes for definition. Drives the Momentum column on Inventory & Velocity table and Velocity tab."
+        }
+      ],
+      "supported_time_ranges": [
+        "T30",
+        "T90",
+        "YTD",
+        "L12M"
+      ],
+      "time_range_notes": "T7 not supported \u2014 velocity/momentum classifications require sufficient sample size; minimum window is T30. demand_supply_ratio denominator (boats_sold) is always a trailing 30-day count regardless of selected window to maintain comparability; the window filter controls which listing snapshots are included in the active_listings numerator."
+    },
+    {
+      "table": "mart_member_usage",
+      "description": "Boat model usage patterns by lake and region. Surfaces which models are actively ridden in specific areas.",
+      "grain": "lake / model / month",
+      "source_facts": [
+        "fact_member_activity"
+      ],
+      "phase": 2
+    }
+  ],
+  "relationships": [
+    {
+      "from": "dim_dealer",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "geo_key"
+    },
+    {
+      "from": "dim_dealer",
+      "to": "dim_dealer_network",
+      "cardinality": "many-to-zero-or-one",
+      "via": "dealer_network_key"
+    },
+    {
+      "from": "dim_dealer",
+      "to": "dim_manufacturer",
+      "cardinality": "many-to-zero-or-one",
+      "via": "primary_manufacturer_key",
+      "notes": "Denormalized primary brand only; full list via bridge_dealer_manufacturer"
+    },
+    {
+      "from": "bridge_dealer_manufacturer",
+      "to": "dim_dealer",
+      "cardinality": "many-to-one",
+      "via": "dealer_key"
+    },
+    {
+      "from": "bridge_dealer_manufacturer",
+      "to": "dim_manufacturer",
+      "cardinality": "many-to-one",
+      "via": "manufacturer_key"
+    },
+    {
+      "from": "dim_member",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "geo_key"
+    },
+    {
+      "from": "dim_lake",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "geo_key"
+    },
+    {
+      "from": "dim_boat_instance",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "dim_boat_model",
+      "to": "dim_manufacturer",
+      "cardinality": "many-to-one",
+      "via": "manufacturer_key"
+    },
+    {
+      "from": "dim_boat_instance",
+      "to": "dim_dealer",
+      "cardinality": "many-to-zero-or-one",
+      "via": "dealer_key"
+    },
+    {
+      "from": "fact_listing_snapshot",
+      "to": "dim_date",
+      "cardinality": "many-to-one",
+      "via": "date_key"
+    },
+    {
+      "from": "fact_listing_snapshot",
+      "to": "dim_boat_instance",
+      "cardinality": "many-to-one",
+      "via": "boat_key"
+    },
+    {
+      "from": "fact_listing_snapshot",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "fact_listing_snapshot",
+      "to": "dim_dealer",
+      "cardinality": "many-to-zero-or-one",
+      "via": "dealer_key"
+    },
+    {
+      "from": "fact_listing_snapshot",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "geo_key"
+    },
+    {
+      "from": "fact_listing_snapshot",
+      "to": "dim_source",
+      "cardinality": "many-to-one",
+      "via": "source_key"
+    },
+    {
+      "from": "fact_estimated_sale",
+      "to": "dim_date",
+      "cardinality": "many-to-one",
+      "via": "date_key"
+    },
+    {
+      "from": "fact_estimated_sale",
+      "to": "dim_boat_instance",
+      "cardinality": "many-to-one",
+      "via": "boat_key"
+    },
+    {
+      "from": "fact_estimated_sale",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "fact_estimated_sale",
+      "to": "dim_dealer",
+      "cardinality": "many-to-zero-or-one",
+      "via": "dealer_key"
+    },
+    {
+      "from": "fact_estimated_sale",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "geo_key"
+    },
+    {
+      "from": "fact_estimated_sale",
+      "to": "dim_source",
+      "cardinality": "many-to-one",
+      "via": "source_key"
+    },
+    {
+      "from": "fact_listing_engagement",
+      "to": "dim_date",
+      "cardinality": "many-to-one",
+      "via": "date_key"
+    },
+    {
+      "from": "fact_listing_engagement",
+      "to": "dim_boat_instance",
+      "cardinality": "many-to-one",
+      "via": "boat_key"
+    },
+    {
+      "from": "fact_listing_engagement",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "fact_listing_engagement",
+      "to": "dim_dealer",
+      "cardinality": "many-to-one",
+      "via": "dealer_key"
+    },
+    {
+      "from": "fact_member_activity",
+      "to": "dim_date",
+      "cardinality": "many-to-one",
+      "via": "date_key"
+    },
+    {
+      "from": "fact_member_activity",
+      "to": "dim_member",
+      "cardinality": "many-to-one",
+      "via": "member_key"
+    },
+    {
+      "from": "fact_member_activity",
+      "to": "dim_boat_instance",
+      "cardinality": "many-to-zero-or-one",
+      "via": "boat_key"
+    },
+    {
+      "from": "fact_member_activity",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "fact_member_activity",
+      "to": "dim_dealer",
+      "cardinality": "many-to-zero-or-one",
+      "via": "dealer_key"
+    },
+    {
+      "from": "fact_member_activity",
+      "to": "dim_lake",
+      "cardinality": "many-to-zero-or-one",
+      "via": "lake_key"
+    },
+    {
+      "from": "fact_marketplace_behavior",
+      "to": "dim_date",
+      "cardinality": "many-to-one",
+      "via": "date_key"
+    },
+    {
+      "from": "fact_marketplace_behavior",
+      "to": "dim_member",
+      "cardinality": "many-to-zero-or-one",
+      "via": "member_key"
+    },
+    {
+      "from": "fact_marketplace_behavior",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "fact_marketplace_behavior",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "geo_key"
+    },
+    {
+      "from": "bridge_listing_features",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "mart_regional_summary",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "state \u2192 dim_geography.state",
+      "notes": "Join on state CHAR(2) for full state name display in Regional tab table."
+    },
+    {
+      "from": "mart_regional_summary",
+      "to": "dim_manufacturer",
+      "cardinality": "many-to-one",
+      "via": "manufacturer_key"
+    },
+    {
+      "from": "mart_regional_summary",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "mart_daily_snapshot",
+      "to": "dim_date",
+      "cardinality": "many-to-one",
+      "via": "date_key"
+    },
+    {
+      "from": "mart_daily_snapshot",
+      "to": "dim_manufacturer",
+      "cardinality": "many-to-one",
+      "via": "manufacturer_key"
+    },
+    {
+      "from": "mart_daily_snapshot",
+      "to": "dim_boat_model",
+      "cardinality": "many-to-one",
+      "via": "boat_model_key"
+    },
+    {
+      "from": "mart_daily_snapshot",
+      "to": "dim_geography",
+      "cardinality": "many-to-one",
+      "via": "state \u2192 dim_geography.state"
+    },
+    {
+      "from": "dim_manufacturer",
+      "to": "gear_brands",
+      "cardinality": "many-to-one",
+      "via": "l2_gear_brand_id",
+      "layer": "layer2",
+      "notes": "Downstream projection of gear_brands. Sync daily."
+    },
+    {
+      "from": "dim_boat_model",
+      "to": "boats_models",
+      "cardinality": "many-to-one",
+      "via": "l2_boats_model_id",
+      "layer": "layer2",
+      "notes": "Downstream projection of boats_models. Sync daily."
+    },
+    {
+      "from": "dim_lake",
+      "to": "waters",
+      "cardinality": "many-to-one",
+      "via": "l2_waters_id",
+      "layer": "layer2",
+      "notes": "Downstream projection of waters. Sync daily."
+    },
+    {
+      "from": "dim_dealer_network",
+      "to": "dealer_groups",
+      "cardinality": "many-to-one",
+      "via": "l2_dealer_group_id",
+      "layer": "layer2",
+      "notes": "Downstream projection of dealer_groups. Sync daily."
+    },
+    {
+      "from": "dim_dealer",
+      "to": "dealers",
+      "cardinality": "many-to-one",
+      "via": "l2_dealer_id",
+      "layer": "layer2",
+      "notes": "Downstream projection of dealers. Sync daily."
+    },
+    {
+      "from": "dim_dealer",
+      "to": "waters",
+      "cardinality": "many-to-zero-or-one",
+      "via": "dealers.water_id \u2192 dim_lake.l2_waters_id",
+      "layer": "layer2",
+      "notes": "dealers.water_id links dealer location to nearest lake. Resolved via dim_lake in Data Lake."
+    }
+  ]
+}
