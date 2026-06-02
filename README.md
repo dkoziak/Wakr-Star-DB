@@ -80,7 +80,7 @@ The application reads `src/.env` relative to `src/config.py` (not the current wo
 The shared local Docker stack runs PostgreSQL 16 on port **5433**:
 
 ```bash
-cd ~/Docs/Wakr
+cd /path/to/your/docker/stack  # directory containing docker-compose.local.yml
 docker compose -f docker-compose.local.yml up -d
 ```
 
