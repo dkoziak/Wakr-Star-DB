@@ -219,6 +219,8 @@ async def inventory_velocity(
     make: Optional[str] = Query(default=None),
     state: Optional[str] = Query(default=None),
     as_of_date: Optional[date] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     _token: str = Depends(require_auth),
 ):
     params = FilterParams(
@@ -348,10 +350,22 @@ async def inventory_velocity(
             )
 
         velocity_rows.sort(key=lambda x: x.avg_days_on_market)
+        # All rows are fetched from the DB before slicing; pagination is applied in Python.
+        # Intentional at current dataset size — revisit with DB-level LIMIT/OFFSET if row
+        # counts grow significantly. An offset beyond total_records returns an empty rows
+        # array; this is valid pagination behaviour, not an error.
+        total_records = len(velocity_rows)
         last_scrape = max(
             (r.last_scrape_date for r in current_rows if r.last_scrape_date), default=None
         )
 
         return make_envelope(
-            InventoryVelocityData(rows=velocity_rows).model_dump(), last_scrape, params
+            InventoryVelocityData(
+                rows=velocity_rows[offset : offset + limit],
+                total_records=total_records,
+                limit=limit,
+                offset=offset,
+            ).model_dump(),
+            last_scrape,
+            params,
         )
