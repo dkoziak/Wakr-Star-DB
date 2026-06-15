@@ -26,6 +26,10 @@ def _has_required_scope(payload: dict, required: str) -> bool:
 async def require_auth(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> str:
+    # Debug mode: no token required — never enable in production
+    if settings.debug:
+        return credentials.credentials if credentials else "debug"
+
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -33,10 +37,6 @@ async def require_auth(
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = credentials.credentials
-
-    # Debug mode: accept any non-empty token — never enable in production
-    if settings.debug:
-        return token
 
     if not settings.jwt_public_key:
         raise HTTPException(
