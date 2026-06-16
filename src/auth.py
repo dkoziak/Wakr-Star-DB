@@ -24,9 +24,13 @@ def _has_required_scope(payload: dict, required: str) -> bool:
     return required in scope.split()
 
 
+def _get_request(request: Request) -> Request:
+    return request
+
+
 async def require_auth(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
-    request: Optional[Request] = None,
+    request: Request = Depends(_get_request),
 ) -> str:
     # Debug mode: no token required — never enable in production
     if settings.debug:
@@ -34,7 +38,7 @@ async def require_auth(
 
     # Static API key auth for machine-to-machine callers (e.g. Cloudflare Worker)
     configured_key = getattr(settings, "analytics_api_key", "") or ""
-    if configured_key and request is not None:
+    if configured_key:
         incoming = request.headers.get("X-API-Key", "")
         if incoming and secrets.compare_digest(incoming, configured_key):
             return "api-key"
