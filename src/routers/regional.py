@@ -216,6 +216,8 @@ async def regional_state_overview(
     make: Optional[str] = Query(default=None),
     model: Optional[str] = Query(default=None),
     as_of_date: Optional[date] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     _token: str = Depends(require_auth),
 ):
     params = FilterParams(
@@ -321,10 +323,17 @@ async def regional_state_overview(
                     else max(last_scrape, sr.last_scrape_date)
                 )
 
+        # All rows are fetched from the DB before slicing; pagination is applied in Python.
+        # Intentional at current dataset size — revisit with DB-level LIMIT/OFFSET if row
+        # counts grow significantly. An offset beyond total_records returns an empty rows
+        # array; this is valid pagination behaviour, not an error.
         return make_envelope(
             RegionalStateOverviewData(
                 national_total_boats_sold=national_total,
-                rows=result_rows,
+                rows=result_rows[offset : offset + limit],
+                total_records=len(result_rows),
+                limit=limit,
+                offset=offset,
             ).model_dump(),
             last_scrape,
             params,

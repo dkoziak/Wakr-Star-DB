@@ -267,12 +267,14 @@ Returns the Inventory & Velocity table: per model-year row with DOM, active unit
 
 #### Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `time_range` | `TimeRange` | Yes | Window for sold and DOM calculations |
-| `inventory_type` | `InventoryType` | No | Default: `combined` |
-| `make` | `string` | No | Manufacturer name or `"all"` |
-| `state` | `string` | No | 2-letter state code or `"all"` |
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `time_range` | `TimeRange` | Yes | — | Window for sold and DOM calculations |
+| `inventory_type` | `InventoryType` | No | `combined` | Filter by new, used, or combined |
+| `make` | `string` | No | — | Manufacturer name or `"all"` |
+| `state` | `string` | No | — | 2-letter state code or `"all"` |
+| `limit` | `integer` | No | `50` | Max rows to return (1–500) |
+| `offset` | `integer` | No | `0` | Number of rows to skip for pagination |
 
 #### Response Payload
 
@@ -289,8 +291,16 @@ type InventoryVelocityResponse = ApiResponse<{
     boats_sold:           number;          // Tier 1: sum of estimated sales over the requested time_range window
     momentum:             MomentumLabel;   // Tier 2: derived from DOM trend vs prior period
   }>;
+  total_records: number;  // Total matching rows before pagination — use for page count math
+  limit:         number;  // Echoed from request
+  offset:        number;  // Echoed from request
 }>;
 ```
+
+#### Pagination Notes
+- Rows are sorted by `avg_days_on_market` ascending (fastest movers first) before pagination is applied.
+- `as_of_date` and pagination are orthogonal: `as_of_date` pins the data snapshot; `limit`/`offset` slice the result set within that snapshot.
+- An `offset` beyond `total_records` returns an empty `rows` array with `total_records` still populated. This is intentional — treat it as a valid empty page, not an error.
 
 #### Momentum Derivation (Tier 2 operation: `momentum_classify`)
 Compares `avg_days_on_market` for the current window against the prior equivalent window:
@@ -406,19 +416,21 @@ Returns the Model Price Efficiency table: per model-year rows with price, band, 
 
 #### Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `time_range` | `TimeRange` | Yes | Window for averaging |
-| `inventory_type` | `InventoryType` | No | Default: `combined` |
-| `make` | `string` | No | Manufacturer name or `"all"` |
-| `model` | `string` | No | Boat model or `"all"` (free-text search on consumer side) |
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `time_range` | `TimeRange` | Yes | — | Window for averaging |
+| `inventory_type` | `InventoryType` | No | `combined` | Filter by new, used, or combined |
+| `make` | `string` | No | — | Manufacturer name or `"all"` |
+| `model` | `string` | No | — | Boat model or `"all"` (free-text search on consumer side) |
+| `limit` | `integer` | No | `50` | Max rows to return (1–500) |
+| `offset` | `integer` | No | `0` | Number of rows to skip for pagination |
 
 #### Response Payload
 
 ```typescript
 type ModelEfficiencyResponse = ApiResponse<{
   rows: Array<{
-    rank:                 number;
+    rank:                 number;        // Global rank (1-based, sorted by avg_dom asc before pagination — rank is stable across pages)
     model_year:           string;        // e.g. "2021 Centurion Ri235"
     manufacturer:         string;
     model:                string;
@@ -431,13 +443,18 @@ type ModelEfficiencyResponse = ApiResponse<{
     dom_velocity_label:   DomVelocityLabel;
     listings:             number;        // Tier 1: sum(active_listings)
   }>;
+  total_records: number;  // Total matching rows before pagination — use for page count math
+  limit:         number;  // Echoed from request
+  offset:        number;  // Echoed from request
 }>;
 ```
 
 #### Notes
-- Ranked by `avg_days_on_market` ascending (fastest movers first).
+- Ranked by `avg_days_on_market` ascending (fastest movers first). `rank` is assigned globally before pagination, so page 2 at offset 50 will start at rank 51.
 - `price_band_low` / `price_band_high` are Tier 2 derived via `percentile_range` operation against listing price distributions, not the fixed price tier bands.
 - Consumer implements free-text search client-side against `model_year` field.
+- `as_of_date` and pagination are orthogonal: `as_of_date` pins the data snapshot; `limit`/`offset` slice the result set within that snapshot.
+- An `offset` beyond `total_records` returns an empty `rows` array with `total_records` still populated. This is intentional — treat it as a valid empty page, not an error.
 
 ---
 
@@ -503,18 +520,20 @@ Returns the State Market Overview table and map data — one row per state.
 
 #### Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `time_range` | `TimeRange` | Yes | Window for all metrics |
-| `inventory_type` | `InventoryType` | No | Default: `combined` |
-| `make` | `string` | No | Manufacturer name or `"all"` |
-| `model` | `string` | No | Boat model name or `"all"` |
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `time_range` | `TimeRange` | Yes | — | Window for all metrics |
+| `inventory_type` | `InventoryType` | No | `combined` | Filter by new, used, or combined |
+| `make` | `string` | No | — | Manufacturer name or `"all"` |
+| `model` | `string` | No | — | Boat model name or `"all"` |
+| `limit` | `integer` | No | `50` | Max rows to return (1–500) |
+| `offset` | `integer` | No | `0` | Number of rows to skip for pagination |
 
 #### Response Payload
 
 ```typescript
 type RegionalStateOverviewResponse = ApiResponse<{
-  national_total_boats_sold: number;    // Tier 1: sum across all states — used for pct_market
+  national_total_boats_sold: number;    // Tier 1: sum across all states — used for pct_market calculation; not a pagination count
   rows: Array<{
     state:              string;         // 2-letter code
     state_name:         string;
@@ -525,13 +544,19 @@ type RegionalStateOverviewResponse = ApiResponse<{
     pct_market:         number;         // Tier 2: state boats_sold / national_total * 100
     avg_list_price:     number;         // Tier 1: avg(avg_list_price)
   }>;
+  total_records: number;  // Total matching state rows before pagination — use for page count math (distinct from national_total_boats_sold)
+  limit:         number;  // Echoed from request
+  offset:        number;  // Echoed from request
 }>;
 ```
 
 #### Notes
-- All states with data in the window are returned, sorted by `boats_sold` descending by default.
+- Rows are sorted by `boats_sold` descending before pagination is applied.
+- `pct_market` is computed from `national_total_boats_sold` across all states regardless of pagination — the percentage is always relative to the national total, not the current page.
 - Consumer renders both the choropleth map (using `avg_dom` or `avg_list_price` per selected metric) and the sortable table from this single payload.
 - `dom_velocity_label` color-codes the DOM value in the table (green / yellow / orange / red).
+- `as_of_date` and pagination are orthogonal: `as_of_date` pins the data snapshot; `limit`/`offset` slice the result set within that snapshot.
+- An `offset` beyond `total_records` returns an empty `rows` array with `total_records` still populated. This is intentional — treat it as a valid empty page, not an error.
 
 ---
 

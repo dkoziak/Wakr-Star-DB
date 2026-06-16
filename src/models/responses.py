@@ -49,6 +49,9 @@ class InventoryVelocityRow(BaseModel):
 
 class InventoryVelocityData(BaseModel):
     rows: list[InventoryVelocityRow]
+    total_records: int
+    limit: int
+    offset: int
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +109,9 @@ class ModelEfficiencyRow(BaseModel):
 
 class ModelEfficiencyData(BaseModel):
     rows: list[ModelEfficiencyRow]
+    total_records: int
+    limit: int
+    offset: int
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +158,9 @@ class RegionalStateRow(BaseModel):
 class RegionalStateOverviewData(BaseModel):
     national_total_boats_sold: int
     rows: list[RegionalStateRow]
+    total_records: int
+    limit: int
+    offset: int
 
 
 class MarketLeaderRow(BaseModel):
