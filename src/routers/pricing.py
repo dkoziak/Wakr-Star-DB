@@ -415,7 +415,7 @@ async def model_efficiency(
             result_rows.append(
                 ModelEfficiencyRow(
                     rank=rank,
-                    model_year=f"{r.model_year} {r.manufacturer_name} {r.model}",
+                    model_year=f"{r.model_year or '?'} {r.manufacturer_name} {r.model}",
                     manufacturer=r.manufacturer_name,
                     model=r.model,
                     year=r.model_year,

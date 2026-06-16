@@ -39,7 +39,7 @@ class InventoryVelocityRow(BaseModel):
     model_year: str
     manufacturer: str
     model: str
-    year: int
+    year: Optional[int]
     avg_days_on_market: float
     dom_velocity_label: DomVelocityLabel
     active_units: int
@@ -97,7 +97,7 @@ class ModelEfficiencyRow(BaseModel):
     model_year: str
     manufacturer: str
     model: str
-    year: int
+    year: Optional[int]
     avg_list_price: float
     price_band_low: float
     price_band_high: float
