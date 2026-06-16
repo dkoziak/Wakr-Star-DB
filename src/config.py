@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     token_issuer: str = ""
     token_audience: str = ""
     jwt_public_key: str = ""
+    analytics_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent / ".env",
