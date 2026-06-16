@@ -337,7 +337,7 @@ async def inventory_velocity(
             prior_dom = prior_map.get(key)
             velocity_rows.append(
                 InventoryVelocityRow(
-                    model_year=f"{r.model_year} {r.manufacturer_name} {r.model}",
+                    model_year=f"{r.model_year or '?'} {r.manufacturer_name} {r.model}",
                     manufacturer=r.manufacturer_name,
                     model=r.model,
                     year=r.model_year,
