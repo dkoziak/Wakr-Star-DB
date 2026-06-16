@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     token_issuer: str = ""
     token_audience: str = ""
     jwt_public_key: str = ""
-    cors_allowed_origins: list[str] = ["https://intel-dashboard-mvp.pages.dev"]
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent / ".env",
