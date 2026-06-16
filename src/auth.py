@@ -33,9 +33,9 @@ async def require_auth(
         return credentials.credentials if credentials else "debug"
 
     # Static API key auth for machine-to-machine callers (e.g. Cloudflare Worker)
-    if settings.api_key:
+    if settings.analytics_api_key:
         incoming = request.headers.get("X-API-Key", "")
-        if incoming and secrets.compare_digest(incoming, settings.api_key):
+        if incoming and secrets.compare_digest(incoming, settings.analytics_api_key):
             return "api-key"
 
     if credentials is None or credentials.scheme.lower() != "bearer":

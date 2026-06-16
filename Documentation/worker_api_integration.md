@@ -10,7 +10,7 @@ The Cloudflare Worker must include the key on every request via a custom header.
 Add the following header to every request to the API:
 
 ```
-X-API-Key: <WAKR_API_KEY>
+X-API-Key: <WAKR_ANALYTICS_API_KEY>
 ```
 
 The key value must be stored as a Worker secret (never hardcoded).
@@ -20,7 +20,7 @@ The key value must be stored as a Worker secret (never hardcoded).
 ### 1. Store the secret in the Worker
 
 ```bash
-wrangler secret put WAKR_API_KEY
+wrangler secret put WAKR_ANALYTICS_API_KEY
 # paste the key value when prompted
 ```
 
@@ -29,7 +29,7 @@ wrangler secret put WAKR_API_KEY
 ```js
 const response = await fetch(`${env.WAKR_API_BASE_URL}/api/v1/inventory/summary?time_range=trailing_30`, {
   headers: {
-    "X-API-Key": env.WAKR_API_KEY,
+    "X-API-Key": env.WAKR_ANALYTICS_API_KEY,
     "Content-Type": "application/json",
   },
 });
@@ -69,5 +69,5 @@ trailing_7 | trailing_30 | trailing_90 | last_month | last_quarter | ytd | l12m
 
 ## Notes
 
-- The API key must be rotated by updating `API_KEY` in the server's `.env` and redeploying the API service, then updating the Worker secret.
+- The API key must be rotated by updating `ANALYTICS_API_KEY` in the server's `.env` and redeploying the API service, then updating the Worker secret.
 - Do not expose the API key in client-side code or logs.
