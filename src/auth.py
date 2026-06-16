@@ -1,6 +1,7 @@
+import secrets
 from typing import Optional, Union
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
@@ -24,11 +25,18 @@ def _has_required_scope(payload: dict, required: str) -> bool:
 
 
 async def require_auth(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> str:
     # Debug mode: no token required — never enable in production
     if settings.debug:
         return credentials.credentials if credentials else "debug"
+
+    # Static API key auth for machine-to-machine callers (e.g. Cloudflare Worker)
+    if settings.api_key:
+        incoming = request.headers.get("X-API-Key", "")
+        if incoming and secrets.compare_digest(incoming, settings.api_key):
+            return "api-key"
 
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
