@@ -2,16 +2,26 @@ import logging
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
+from config import settings
 from routers import inventory, pricing, regional
 
 app = FastAPI(
     title="Wakr Market Intelligence API",
     version="1.6.0-draft",
     description="REST API serving boat market intelligence data from the Wakr Data Lake.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(inventory.router)
