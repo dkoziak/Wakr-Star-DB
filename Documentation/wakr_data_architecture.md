@@ -1,7 +1,32 @@
 # Wakr Data Lake — Data Architecture Reference
 
-**Schema version:** v1.5.0 · Updated: 2026-04-02
+**Schema version:** v1.6.0 · Updated: 2026-07-07
 **Pattern:** Star schema · Layers: Dimensions, Facts, Bridges, Marts
+
+---
+
+## Implementation Status
+
+This document describes both **implemented** tables (live in `wakr_stardb`) and **planned** tables (designed but not yet built). The distinction matters when writing queries or building ETL.
+
+### Currently Implemented (live in `wakr_stardb`)
+
+| Table | Type | ETL Asset | Notes |
+|-------|------|-----------|-------|
+| `dim_manufacturer` | Dimension | `dim_manufacturer` | Populated from Directus `brands` |
+| `dim_boat_model` | Dimension | `dim_boat_model` | Populated from Directus `boats_models` |
+| `dim_geography` | Dimension | `dim_geography` | Unique states from `dealership_inventories` |
+| `dim_date` | Dimension | `dim_date` | Date spine, static |
+| `mart_daily_snapshot` | Mart | `mart_daily_snapshot` | Grain: manufacturer / model / state / inventory_type / date; daily idempotent refresh |
+| `mart_pricing_trends` | Mart | `mart_pricing_trends` | Grain: manufacturer / model / geo / month; full truncate+reload |
+| `mart_regional_summary` | Mart | `mart_regional_summary` | Grain: state / manufacturer / model / month; full truncate+reload |
+| `fact_estimated_sale` | Fact | `fact_estimated_sale` | Incremental by `sold_at` date; one row per inferred sale event |
+
+### Planned / Not Yet Implemented
+
+All other tables in this document (dim_dealer, dim_boat_instance, fact_listing_snapshot, mart_dealer_scorecard, etc.) are **design-phase** only. They do not exist in the database and have no ETL assets. They are retained here to document the intended future schema.
+
+---
 
 ---
 
@@ -223,13 +248,26 @@ Core fact table. Backbone of pricing, time-on-market, and inventory level analyt
 
 ---
 
-### fact_estimated_sale — Phase 1
-**Grain:** one row per inferred sale event
+### fact_estimated_sale — Phase 1 ✅ IMPLEMENTED
+**Grain:** one row per inferred sale event  
+**Load strategy:** Incremental — high-water mark on `date_key`; only records with `sold_at` after the latest loaded date are fetched
 
-A listing removed after active status is treated as a likely sale. `confidence_score` allows downstream analytics to discount low-confidence records.
+A listing that transitions to `status=delisted` with `sold_at` set is treated as an inferred sale. `sold_at` is written by the scraper on the first missed scrape for each listing.
 
-**Foreign keys:** date_key, boat_key, boat_model_key, dealer_key (nullable), geo_key, source_key  
-**Key measures:** final_listed_price, days_on_market, confidence_score, sale_type
+**Actual schema (as implemented):**
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `estimated_sale_key` | BigInteger (PK) | |
+| `date_key` | Integer | YYYYMMDD of `sold_at` |
+| `manufacturer_key` | Integer (FK→dim_manufacturer) | |
+| `boat_model_key` | Integer (FK→dim_boat_model) | Nullable |
+| `state` | CHAR(2) | From listing location |
+| `inventory_type` | String(10) | `New` \| `Used` |
+| `estimated_sale_price` | Numeric(10,2) | Last list price × 0.93; nullable |
+| `days_on_market` | Integer | Days from `first_seen_at` to `sold_at`; nullable |
+
+> **Design-doc columns NOT yet implemented:** `boat_key`, `dealer_key`, `geo_key`, `source_key`, `confidence_score`, `sale_type`. These remain as planned additions.
 
 ---
 
@@ -311,15 +349,19 @@ All marts are implemented as **physical tables** populated by scheduled ETL/dbt 
 
 > Fields marked **[PENDING]** require user-approved definition before ETL implementation.
 
-| Mart | Grain | Source Facts | Phase | Computed Columns |
-|------|-------|-------------|-------|-----------------|
-| mart_inventory_summary | make/model/region/week | snapshot + est_sale | 1 | `sell_through_rate`, `mom_listing_change_pct`, `days_supply` |
-| mart_pricing_trends | make/model/region/month | fact_listing_snapshot | 1 | `pct_listings_with_price_cut`, `discount_pressure_pct` |
-| mart_time_on_market | make/model/region/month | fact_listing_snapshot | 1 | `dom_status`, `aging_risk_level` |
-| mart_dealer_scorecard | dealer/month | snapshot + engagement + est_sale + floorplan_daily | 1 | `delta_week_units`, `market_share_pct` [PENDING], `total_floorplan_exposure`, `avg_carry_cost_per_unit_sold`, `curtailment_compliance_rate`, `out_of_trust_count` |
-| mart_estimated_velocity | make/model/region/month | est_sale + snapshot | 1 | `demand_supply_ratio`, `momentum_status` [PENDING] |
-| mart_floorplan_aging | manufacturer/aging_bucket/month | fact_floorplan_daily | 1 | `avg_days_on_floor`, `total_carry_cost_accrued`, `pct_past_subsidy_window`, `units_in_curtailment`, `curtailment_compliance_rate` |
-| mart_member_usage | lake/model/month | fact_member_activity | 2 | — |
+| Mart | Grain | Source | Phase | Status | Computed Columns |
+|------|-------|--------|-------|--------|-----------------|
+| `mart_daily_snapshot` | mfr/model/state/inv_type/date | `dealership_inventories` direct | 1 | ✅ **Live** | `dom_status`, `sell_through_rate`, `days_supply` (WAK-67: uses single-day removal count — fix pending) |
+| `mart_pricing_trends` | mfr/model/geo/month | `mart_daily_snapshot` | 1 | ✅ **Live** | `pct_listings_with_price_cut` and `discount_pressure_pct` hardcoded NULL (WAK-69 pending); `avg_list_price` is unweighted (WAK-68 pending) |
+| `mart_regional_summary` | state/mfr/model/month | `mart_daily_snapshot` | 1 | ✅ **Live** | Uses `removed_listings` as sold proxy, not `fact_estimated_sale` (WAK-70 pending) |
+| `fact_estimated_sale` | one row per inferred sale | `dealership_inventories` (delisted) | 1 | ✅ **Live** | Incremental by `sold_at`; see fact schema above |
+| `mart_inventory_summary` | make/model/region/week | snapshot + est_sale | 1 | ⏳ Planned | `sell_through_rate`, `mom_listing_change_pct`, `days_supply` |
+| `mart_pricing_trends` (full) | make/model/region/month | fact_listing_snapshot | 1 | ⏳ Planned | Full `pct_listings_with_price_cut`, `discount_pressure_pct` |
+| `mart_time_on_market` | make/model/region/month | fact_listing_snapshot | 1 | ⏳ Planned | `dom_status`, `aging_risk_level` |
+| `mart_dealer_scorecard` | dealer/month | snapshot + engagement + est_sale + floorplan_daily | 1 | ⏳ Planned | `delta_week_units`, `market_share_pct` [PENDING], `total_floorplan_exposure`, `avg_carry_cost_per_unit_sold`, `curtailment_compliance_rate`, `out_of_trust_count` |
+| `mart_estimated_velocity` | make/model/region/month | est_sale + snapshot | 1 | ⏳ Planned | `demand_supply_ratio`, `momentum_status` [PENDING] |
+| `mart_floorplan_aging` | manufacturer/aging_bucket/month | fact_floorplan_daily | 1 | ⏳ Planned | `avg_days_on_floor`, `total_carry_cost_accrued`, `pct_past_subsidy_window`, `units_in_curtailment`, `curtailment_compliance_rate` |
+| `mart_member_usage` | lake/model/month | fact_member_activity | 2 | ⏳ Planned | — |
 
 ### Computed Column Definitions
 

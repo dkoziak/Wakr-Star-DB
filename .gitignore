@@ -35,3 +35,4 @@ build/
 
 # Review artefacts
 SUGGESTIONS.md
+/.agent-shell/
