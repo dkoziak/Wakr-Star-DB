@@ -7,12 +7,12 @@
 
 ## Related Documentation
 
-| Document | Location | What it covers |
-|----------|----------|----------------|
-| [Testing Architecture & End-to-End Pipeline](README_TEST.md) | `~/Docs/Wakr/README_TEST.md` | How to run the full pipeline locally: starting the Star DB, running the scraper, triggering the ETL, starting the API, and verifying each step. Use this when setting up a local dev environment or debugging the pipeline end-to-end. |
-| [Sold Boat Metrics — Installation & Operations](README_feat_sold_boat_metrics.md) | `~/Docs/Wakr/README_feat_sold_boat_metrics.md` | Deep-dive on the sold boat metrics feature (WAK-45–49): how `sold_at` and `estimated_sale_price` are set, the `fact_estimated_sale` ETL asset, the one-time backfill script, and the Directus `/reporting/sold-metrics` endpoint. Includes current production status and verification checklist. |
-| [AWS Deployment Plan](IMPLEMENTATION_AWS.md) | `~/Docs/Wakr/IMPLEMENTATION_AWS.md` | Step-by-step instructions for provisioning the full AWS environment from scratch: VPC, RDS, SSM secrets, EC2 instances, systemd services, Directus bootstrap, and smoke tests. Reference this when standing up a new environment or onboarding a new AWS account. |
-| [Data Architecture Reference](Wakr-Star-DB/Documentation/wakr_data_architecture.md) | `~/Docs/Wakr/Wakr-Star-DB/Documentation/wakr_data_architecture.md` | Star schema design for `wakr_stardb`: all dimension, fact, bridge, and mart table definitions with column-level detail. Distinguishes between tables that are **live** (implemented and populated by ETL) and **planned** (designed but not yet built). |
+| Document | What it covers |
+|----------|----------------|
+| [Testing Architecture & End-to-End Pipeline](README_TEST.md) | How to run the full pipeline locally: starting the Star DB, running the scraper, triggering the ETL, starting the API, and verifying each step. Use this when setting up a local dev environment or debugging the pipeline end-to-end. |
+| [Sold Boat Metrics — Installation & Operations](README_feat_sold_boat_metrics.md) | Deep-dive on the sold boat metrics feature (WAK-45–49): how `sold_at` and `estimated_sale_price` are set, the `fact_estimated_sale` ETL asset, the one-time backfill script, and the Directus `/reporting/sold-metrics` endpoint. Includes current production status and verification checklist. |
+| [AWS Deployment Plan](IMPLEMENTATION_AWS.md) | Step-by-step instructions for provisioning the full AWS environment from scratch: VPC, RDS, SSM secrets, EC2 instances, systemd services, Directus bootstrap, and smoke tests. Reference this when standing up a new environment or onboarding a new AWS account. |
+| [Data Architecture Reference](wakr_data_architecture.md) | Star schema design for `wakr_stardb`: all dimension, fact, bridge, and mart table definitions with column-level detail. Distinguishes between tables that are **live** (implemented and populated by ETL) and **planned** (designed but not yet built). |
 
 ---
 
