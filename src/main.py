@@ -17,9 +17,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://analytics-api.test.wakr.co"],
+    allow_origins=["https://intel-dashboard-mvp.pages.dev"],
     allow_methods=["GET"],
-    allow_headers=["X-API-Key"],
+    allow_headers=["X-API-Key", "Content-Type", "Authorization"],
 )
 
 app.include_router(inventory.router)
