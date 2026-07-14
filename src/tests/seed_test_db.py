@@ -113,7 +113,7 @@ def seed_test_db(url: str | None = None) -> None:
     """)
 
     # ── mart_daily_snapshot ───────────────────────────────────────────────────
-    # One row per (date_key × manufacturer_key × boat_model_key × state × inventory_type).
+    # One row per (date_key × manufacturer_key × boat_model_key × listing_year × state × inventory_type).
     # Rows must have non-null boat_model_key and state to be visible to STOCK queries.
     #
     # Columns: al=active_listings, dom=avg_dom, price=avg_list_price,
@@ -127,15 +127,15 @@ def seed_test_db(url: str | None = None) -> None:
         ('VT',     7, 31.0,  90_000,   1,   1,   2,   2,  1,   2),
         ('ND',     8, 29.5,  88_000,   2,   2,   2,   2,  0,   1),
     ]
-    MODELS = [(1, 1, 'New'), (1, 2, 'Used'), (2, 3, 'New')]
+    MODELS = [(1, 1, 'New', 2026), (1, 2, 'Used', 2025), (2, 3, 'New', 2024)]
 
     mds_rows = []
     for dk in snapshot_keys:
         scrape_date = date(dk // 10000, (dk // 100) % 100, dk % 100)
         for state, al, avg_dom, avg_price, b0, b1, b2, b3, b4, new_lst in STATE_PARAMS:
-            for mkey, bkey, inv_type in MODELS:
+            for mkey, bkey, inv_type, listing_year in MODELS:
                 mds_rows.append((
-                    dk, mkey, bkey, state, inv_type,
+                    dk, mkey, bkey, listing_year, state, inv_type,
                     al, avg_price, round(avg_price * 0.96),
                     avg_dom, b0, b1, b2, b3, b4,
                     round(avg_price * 0.8), round(avg_price * 1.2),
@@ -149,7 +149,7 @@ def seed_test_db(url: str | None = None) -> None:
 
     cur.executemany("""
         INSERT INTO mart_daily_snapshot (
-            date_key, manufacturer_key, boat_model_key, state, inventory_type,
+            date_key, manufacturer_key, boat_model_key, listing_year, state, inventory_type,
             active_listings, avg_list_price, median_list_price, avg_dom,
             dom_bucket_0_7, dom_bucket_8_15, dom_bucket_16_30,
             dom_bucket_31_60, dom_bucket_60_plus,
@@ -163,7 +163,7 @@ def seed_test_db(url: str | None = None) -> None:
             dom_status, sell_through_rate, days_supply,
             is_partial_scrape_day, last_scrape_date
         ) VALUES (
-            %s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s,%s,%s,%s,
+            %s,%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s,%s,%s,%s,
             %s,%s, %s,%s,%s,%s,%s,%s,
             %s,%s,%s,%s,%s,%s,
             %s,%s,%s, %s,%s,%s, %s,%s
@@ -238,15 +238,15 @@ def seed_test_db(url: str | None = None) -> None:
         for state, n in SALES_PER_STATE:
             for i in range(n):
                 fes_rows.append((
-                    dk, 1, 1, state, 'New',
+                    dk, 1, 1, 2026, state, 'New',
                     115_000 + i * 1_000, 30 + i,
                 ))
 
     cur.executemany("""
         INSERT INTO fact_estimated_sale (
-            date_key, manufacturer_key, boat_model_key,
+            date_key, manufacturer_key, boat_model_key, listing_year,
             state, inventory_type, estimated_sale_price, days_on_market
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s)
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
     """, fes_rows)
 
     conn.commit()

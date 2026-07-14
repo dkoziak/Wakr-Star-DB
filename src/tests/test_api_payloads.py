@@ -42,8 +42,10 @@ from tests.mock_data import (
     TREND_REGIONAL,
     TREND_ROWS,
     VELOCITY_CURRENT,
+    VELOCITY_EXCLUDED_NULL_MODEL,
     VELOCITY_FLOW,
     VELOCITY_PRIOR,
+    Row,
 )
 
 # ---------------------------------------------------------------------------
@@ -180,6 +182,7 @@ class TestInventoryVelocityPayload:
         return mock_conn(
             mock_result(*VELOCITY_CURRENT),
             mock_result(*VELOCITY_FLOW),
+            mock_result(VELOCITY_EXCLUDED_NULL_MODEL),  # excluded null model_key sales
             mock_result(*VELOCITY_PRIOR),
         )
 
@@ -207,9 +210,9 @@ class TestInventoryVelocityPayload:
         assert row["model_year"] == "2026 Centurion Fi23"
         assert row["momentum"] in ("Accelerating", "Slowing", "Stable")
 
-        # Sorted by DOM ascending
-        doms = [r["avg_days_on_market"] for r in rows]
-        assert doms == sorted(doms)
+        # Default sort: active units descending (matches product spec)
+        active_units = [r["active_units"] for r in rows]
+        assert active_units == sorted(active_units, reverse=True)
 
 
 # ---------------------------------------------------------------------------

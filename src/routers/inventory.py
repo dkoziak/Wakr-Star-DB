@@ -1,8 +1,9 @@
+import logging
 from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, tuple_
 
 from auth import require_auth
 from db.engine import get_conn
@@ -41,7 +42,19 @@ from query.params import (
 )
 from query.time_range import resolve_time_range
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/inventory", tags=["Inventory"])
+
+
+def _dim_label_resolved(manufacturer_name: Optional[str], model: Optional[str]) -> bool:
+    if not manufacturer_name or not model:
+        return False
+    mfr = manufacturer_name.strip()
+    model_name = model.strip()
+    if not mfr or not model_name:
+        return False
+    return mfr.lower() != "unknown" and model_name.lower() != "unknown"
 
 
 def _key_to_iso(date_key: int) -> str:
@@ -219,8 +232,6 @@ async def inventory_velocity(
     make: Optional[str] = Query(default=None),
     state: Optional[str] = Query(default=None),
     as_of_date: Optional[date] = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
     _token: str = Depends(require_auth),
 ):
     params = FilterParams(
@@ -241,10 +252,13 @@ async def inventory_velocity(
             mds.c.state.isnot(None),
         ] + dim_conds
 
+        # listing_year comes from mart_daily_snapshot (dealership_inventories.year via ETL),
+        # not dim_boat_model.model_year (boats_models catalog).
         current_q = (
             select(
                 mds.c.manufacturer_key,
                 mds.c.boat_model_key,
+                mds.c.listing_year,
                 (
                     func.sum(mds.c.avg_dom * mds.c.active_listings)
                     / func.nullif(func.sum(mds.c.active_listings), 0)
@@ -253,7 +267,6 @@ async def inventory_velocity(
                 func.max(mds.c.last_scrape_date).label("last_scrape_date"),
                 dim_boat_model.c.make,
                 dim_boat_model.c.model,
-                dim_boat_model.c.model_year,
                 dim_manufacturer.c.manufacturer_name,
             )
             .join(dim_boat_model, mds.c.boat_model_key == dim_boat_model.c.boat_model_key)
@@ -262,36 +275,61 @@ async def inventory_velocity(
             .group_by(
                 mds.c.manufacturer_key,
                 mds.c.boat_model_key,
+                mds.c.listing_year,
                 dim_boat_model.c.make,
                 dim_boat_model.c.model,
-                dim_boat_model.c.model_year,
                 dim_manufacturer.c.manufacturer_name,
             )
         )
 
         current_rows = (await conn.execute(current_q)).fetchall()
 
-        if not current_rows:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=error_detail("NO_DATA", "No data for the requested filters."),
-            )
-
         # ---- Current window boats sold from fact_estimated_sale ----
+        sale_conds = [
+            *fes_conditions(fes, params, resolved, dr),
+            fes.c.boat_model_key.isnot(None),
+        ]
         sale_q = (
             select(
                 fes.c.manufacturer_key,
                 fes.c.boat_model_key,
+                fes.c.listing_year,
                 func.count().label("boats_sold"),
             )
-            .where(and_(*fes_conditions(fes, params, resolved, dr)))
-            .group_by(fes.c.manufacturer_key, fes.c.boat_model_key)
+            .where(and_(*sale_conds))
+            .group_by(fes.c.manufacturer_key, fes.c.boat_model_key, fes.c.listing_year)
         )
 
         flow_map = {
-            (r.manufacturer_key, r.boat_model_key): safe_int(r.boats_sold)
+            (r.manufacturer_key, r.boat_model_key, r.listing_year): safe_int(r.boats_sold)
             for r in (await conn.execute(sale_q)).fetchall()
         }
+
+        excluded_null_model_q = (
+            select(func.count())
+            .select_from(fes)
+            .where(
+                and_(
+                    *fes_conditions(fes, params, resolved, dr),
+                    fes.c.boat_model_key.is_(None),
+                )
+            )
+        )
+        excluded_null_row = (await conn.execute(excluded_null_model_q)).fetchone()
+        excluded_null_model_count = safe_int(
+            excluded_null_row[0] if excluded_null_row is not None else 0
+        )
+
+        stock_map = {
+            (r.manufacturer_key, r.boat_model_key, r.listing_year): r for r in current_rows
+        }
+        all_keys = set(stock_map.keys()) | set(flow_map.keys())
+
+        if not all_keys:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_detail("NO_DATA", "No data for the requested filters."),
+            )
 
         # ---- Prior window STOCK (for momentum) ----
         prior_latest = (
@@ -315,56 +353,133 @@ async def inventory_velocity(
             select(
                 mds.c.manufacturer_key,
                 mds.c.boat_model_key,
+                mds.c.listing_year,
                 (
                     func.sum(mds.c.avg_dom * mds.c.active_listings)
                     / func.nullif(func.sum(mds.c.active_listings), 0)
                 ).label("avg_dom"),
             )
             .where(and_(*prior_conds))
-            .group_by(mds.c.manufacturer_key, mds.c.boat_model_key)
+            .group_by(mds.c.manufacturer_key, mds.c.boat_model_key, mds.c.listing_year)
         )
 
         prior_map = {
-            (r.manufacturer_key, r.boat_model_key): safe_float(r.avg_dom)
+            (r.manufacturer_key, r.boat_model_key, r.listing_year): safe_float(r.avg_dom)
             for r in (await conn.execute(prior_q)).fetchall()
         }
 
-        # ---- Assemble rows ----
+        sale_only_keys = set(flow_map.keys()) - set(stock_map.keys())
+        dim_label_map: dict[tuple, tuple[str, str]] = {}
+        if sale_only_keys:
+            sale_only_label_q = (
+                select(
+                    fes.c.manufacturer_key,
+                    fes.c.boat_model_key,
+                    fes.c.listing_year,
+                    dim_manufacturer.c.manufacturer_name,
+                    dim_boat_model.c.model,
+                )
+                .select_from(fes)
+                .outerjoin(
+                    dim_boat_model,
+                    dim_boat_model.c.boat_model_key == fes.c.boat_model_key,
+                )
+                .outerjoin(
+                    dim_manufacturer,
+                    dim_manufacturer.c.manufacturer_key == fes.c.manufacturer_key,
+                )
+                .where(
+                    and_(
+                        *sale_conds,
+                        tuple_(
+                            fes.c.manufacturer_key,
+                            fes.c.boat_model_key,
+                            fes.c.listing_year,
+                        ).in_(list(sale_only_keys)),
+                    )
+                )
+                .group_by(
+                    fes.c.manufacturer_key,
+                    fes.c.boat_model_key,
+                    fes.c.listing_year,
+                    dim_manufacturer.c.manufacturer_name,
+                    dim_boat_model.c.model,
+                )
+            )
+            for label_row in (await conn.execute(sale_only_label_q)).fetchall():
+                key = (
+                    label_row.manufacturer_key,
+                    label_row.boat_model_key,
+                    label_row.listing_year,
+                )
+                if _dim_label_resolved(label_row.manufacturer_name, label_row.model):
+                    dim_label_map[key] = (
+                        label_row.manufacturer_name.strip(),
+                        label_row.model.strip(),
+                    )
+
+        sold_only_rows_excluded_unresolved_dim = len(sale_only_keys) - len(dim_label_map)
+
+        # ---- Assemble rows (union of STOCK and SALES keys) ----
         velocity_rows = []
-        for r in current_rows:
-            key = (r.manufacturer_key, r.boat_model_key)
-            cur_dom = safe_float(r.avg_dom)
-            prior_dom = prior_map.get(key)
+        for key in all_keys:
+            mfr_key, model_key, listing_year = key
+            stock_row = stock_map.get(key)
+            boats_sold = flow_map.get(key, 0)
+
+            if stock_row is not None:
+                manufacturer_name = stock_row.manufacturer_name
+                model = stock_row.model
+                cur_dom = safe_float(stock_row.avg_dom)
+                active_units = safe_int(stock_row.active_units)
+                momentum = classify_momentum(cur_dom, prior_map.get(key))
+                avg_dom_value = round(cur_dom, 1) if cur_dom is not None else None
+            else:
+                labels = dim_label_map.get(key)
+                if labels is None:
+                    continue
+                manufacturer_name, model = labels
+                cur_dom = None
+                active_units = 0
+                momentum = None
+                avg_dom_value = None
+
             velocity_rows.append(
                 InventoryVelocityRow(
-                    model_year=f"{r.model_year or '?'} {r.manufacturer_name} {r.model}",
-                    manufacturer=r.manufacturer_name,
-                    model=r.model,
-                    year=r.model_year,
-                    avg_days_on_market=round(cur_dom, 1),
+                    model_year=f"{listing_year or '?'} {manufacturer_name} {model}",
+                    manufacturer=manufacturer_name,
+                    model=model,
+                    year=listing_year,
+                    avg_days_on_market=avg_dom_value,
                     dom_velocity_label=classify_dom_velocity(cur_dom),
-                    active_units=safe_int(r.active_units),
-                    boats_sold=flow_map.get(key, 0),
-                    momentum=classify_momentum(cur_dom, prior_dom),
+                    active_units=active_units,
+                    boats_sold=boats_sold,
+                    momentum=momentum,
                 )
             )
 
-        velocity_rows.sort(key=lambda x: x.avg_days_on_market)
-        # All rows are fetched from the DB before slicing; pagination is applied in Python.
-        # Intentional at current dataset size — revisit with DB-level LIMIT/OFFSET if row
-        # counts grow significantly. An offset beyond total_records returns an empty rows
-        # array; this is valid pagination behaviour, not an error.
+        velocity_rows.sort(key=lambda x: x.active_units, reverse=True)
         total_records = len(velocity_rows)
+        table_boats_sold = sum(row.boats_sold for row in velocity_rows)
+        logger.info(
+            "velocity assembly: stock_keys=%d sale_keys=%d sold_only_rows=%d "
+            "sold_only_rows_excluded_unresolved_dim=%d table_boats_sold=%d "
+            "excluded_null_model_sales=%d",
+            len(stock_map),
+            len(flow_map),
+            len(sale_only_keys),
+            sold_only_rows_excluded_unresolved_dim,
+            table_boats_sold,
+            excluded_null_model_count,
+        )
         last_scrape = max(
             (r.last_scrape_date for r in current_rows if r.last_scrape_date), default=None
         )
 
         return make_envelope(
             InventoryVelocityData(
-                rows=velocity_rows[offset : offset + limit],
+                rows=velocity_rows,
                 total_records=total_records,
-                limit=limit,
-                offset=offset,
             ).model_dump(),
             last_scrape,
             params,

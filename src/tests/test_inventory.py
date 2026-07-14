@@ -7,10 +7,16 @@ from tests.mock_data import (
     INV_BOATS_SOLD,
     INV_FLOW,
     INV_STOCK,
+    Row,
     TREND_ROWS,
     VELOCITY_CURRENT,
+    VELOCITY_EXCLUDED_NULL_MODEL,
     VELOCITY_FLOW,
+    VELOCITY_FLOW_SOLD_ONLY,
+    VELOCITY_FLOW_SOLD_ONLY_UNRESOLVED,
     VELOCITY_PRIOR,
+    VELOCITY_SALE_ONLY_LABEL,
+    VELOCITY_SALE_ONLY_LABEL_UNRESOLVED,
 )
 
 BASE = "/api/v1/inventory"
@@ -175,11 +181,24 @@ class TestInventoryTrend:
 # ---------------------------------------------------------------------------
 
 class TestInventoryVelocity:
-    def _conn(self):
+    def _conn(self, *, include_sold_only: bool = False, include_unresolved_sold_only: bool = False):
+        flow = list(VELOCITY_FLOW)
+        extra = []
+        label_rows = []
+        if include_sold_only:
+            flow.append(VELOCITY_FLOW_SOLD_ONLY)
+            label_rows.append(VELOCITY_SALE_ONLY_LABEL)
+        if include_unresolved_sold_only:
+            flow.append(VELOCITY_FLOW_SOLD_ONLY_UNRESOLVED)
+            label_rows.append(VELOCITY_SALE_ONLY_LABEL_UNRESOLVED)
+        if label_rows:
+            extra.append(mock_result(*label_rows))
         return mock_conn(
             mock_result(*VELOCITY_CURRENT),  # current STOCK + names
-            mock_result(*VELOCITY_FLOW),     # fact_estimated_sale per model
+            mock_result(*flow),              # fact_estimated_sale per model
+            mock_result(VELOCITY_EXCLUDED_NULL_MODEL),  # excluded null model_key sales
             mock_result(*VELOCITY_PRIOR),    # prior STOCK
+            *extra,                          # dim labels for sold-only keys
         )
 
     def test_happy_path(self, client):
@@ -190,9 +209,10 @@ class TestInventoryVelocity:
 
     def test_row_count(self, client):
         with patch("routers.inventory.get_conn", get_conn_for(self._conn())):
-            rows = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH).json()["data"]["rows"]
+            data = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH).json()["data"]
 
-        assert len(rows) == 2
+        assert len(data["rows"]) == 2
+        assert data["total_records"] == 2
 
     def test_row_fields_present(self, client):
         with patch("routers.inventory.get_conn", get_conn_for(self._conn())):
@@ -226,12 +246,12 @@ class TestInventoryVelocity:
         fi23 = next(r for r in rows if "Fi23" in r["model_year"])
         assert fi23["dom_velocity_label"] == "Fast"   # 14.2 < 15
 
-    def test_sorted_by_dom_ascending(self, client):
+    def test_sorted_by_active_units_descending(self, client):
         with patch("routers.inventory.get_conn", get_conn_for(self._conn())):
             rows = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH).json()["data"]["rows"]
 
-        doms = [r["avg_days_on_market"] for r in rows]
-        assert doms == sorted(doms)
+        active_units = [r["active_units"] for r in rows]
+        assert active_units == sorted(active_units, reverse=True)
 
     def test_model_year_label_format(self, client):
         with patch("routers.inventory.get_conn", get_conn_for(self._conn())):
@@ -249,8 +269,52 @@ class TestInventoryVelocity:
         assert r.status_code == 200
 
     def test_no_data_returns_404(self, client):
-        empty_conn = mock_conn(mock_result())
+        empty_conn = mock_conn(
+            mock_result(),  # current STOCK
+            mock_result(),  # sales
+            mock_result((0,)),  # excluded null model_key sales
+            mock_result(),  # prior STOCK
+        )
         with patch("routers.inventory.get_conn", get_conn_for(empty_conn)):
             r = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH)
 
         assert r.status_code == 404
+
+    def test_sold_only_row_included_in_union(self, client):
+        with patch("routers.inventory.get_conn", get_conn_for(self._conn(include_sold_only=True))):
+            data = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH).json()["data"]
+
+        assert data["total_records"] == 3
+        sold_only = next(r for r in data["rows"] if r["model"] == "SC400")
+        assert sold_only["active_units"] == 0
+        assert sold_only["boats_sold"] == 5
+        assert sold_only["avg_days_on_market"] is None
+        assert sold_only["momentum"] is None
+        assert sold_only["manufacturer"] == "Supra"
+
+    def test_boats_sold_sums_across_union(self, client):
+        with patch("routers.inventory.get_conn", get_conn_for(self._conn(include_sold_only=True))):
+            rows = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH).json()["data"]["rows"]
+
+        assert sum(r["boats_sold"] for r in rows) == 18 + 7 + 5
+
+    def test_sold_only_rows_sort_below_stock(self, client):
+        with patch("routers.inventory.get_conn", get_conn_for(self._conn(include_sold_only=True))):
+            rows = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH).json()["data"]["rows"]
+
+        stock_rows = [r for r in rows if r["active_units"] > 0]
+        sold_only_rows = [r for r in rows if r["active_units"] == 0 and r["boats_sold"] > 0]
+        assert stock_rows == rows[: len(stock_rows)]
+        assert sold_only_rows == rows[len(stock_rows) :]
+
+    def test_unresolved_sold_only_excluded_from_response(self, client):
+        with patch(
+            "routers.inventory.get_conn",
+            get_conn_for(self._conn(include_sold_only=True, include_unresolved_sold_only=True)),
+        ):
+            data = client.get(f"{BASE}/velocity?time_range=trailing_30", headers=AUTH).json()["data"]
+
+        assert data["total_records"] == 3
+        assert not any(r["model"] == "Unknown" or r["manufacturer"] == "Unknown" for r in data["rows"])
+        assert not any(r["manufacturer"] == "Mastercraft" for r in data["rows"])
+        assert sum(r["boats_sold"] for r in data["rows"]) == 18 + 7 + 5
