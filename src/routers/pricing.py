@@ -361,6 +361,7 @@ async def model_efficiency(
             select(
                 mds.c.manufacturer_key,
                 mds.c.boat_model_key,
+                mds.c.listing_year,
                 (
                     func.sum(mds.c.avg_list_price * mds.c.active_listings)
                     / func.nullif(func.sum(mds.c.active_listings), 0)
@@ -375,7 +376,6 @@ async def model_efficiency(
                 func.max(mds.c.last_scrape_date).label("last_scrape_date"),
                 dim_boat_model.c.make,
                 dim_boat_model.c.model,
-                dim_boat_model.c.model_year,
                 dim_manufacturer.c.manufacturer_name,
             )
             .join(dim_boat_model, mds.c.boat_model_key == dim_boat_model.c.boat_model_key)
@@ -384,9 +384,9 @@ async def model_efficiency(
             .group_by(
                 mds.c.manufacturer_key,
                 mds.c.boat_model_key,
+                mds.c.listing_year,
                 dim_boat_model.c.make,
                 dim_boat_model.c.model,
-                dim_boat_model.c.model_year,
                 dim_manufacturer.c.manufacturer_name,
             )
         )
@@ -415,10 +415,10 @@ async def model_efficiency(
             result_rows.append(
                 ModelEfficiencyRow(
                     rank=rank,
-                    model_year=f"{r.model_year or '?'} {r.manufacturer_name} {r.model}",
+                    model_year=f"{r.listing_year or '?'} {r.manufacturer_name} {r.model}",
                     manufacturer=r.manufacturer_name,
                     model=r.model,
-                    year=r.model_year,
+                    year=r.listing_year,
                     avg_list_price=round(safe_float(r.avg_list_price), 2),
                     price_band_low=round(low, 2),
                     price_band_high=round(high, 2),

@@ -86,7 +86,7 @@ dim_date = Table(
 
 # ---------------------------------------------------------------------------
 # mart_daily_snapshot  — central analytics workhorse
-# Grain: manufacturer_key / boat_model_key / state / inventory_type / date_key
+# Grain: manufacturer_key / boat_model_key / listing_year / state / inventory_type / date_key
 # STOCK columns: do NOT SUM across days — use latest row or AVG
 # FLOW  columns: safe to SUM across any window
 # ---------------------------------------------------------------------------
@@ -97,6 +97,7 @@ mart_daily_snapshot = Table(
     Column("date_key", Integer),
     Column("manufacturer_key", Integer),
     Column("boat_model_key", Integer, nullable=True),   # NULL = make-level rollup row
+    Column("listing_year", SmallInteger, nullable=True),  # from dealership_inventories.year
     Column("state", CHAR(2), nullable=True),            # NULL = all-states rollup row
     Column("inventory_type", String(10)),               # 'New' | 'Used'
     # --- STOCK ---
@@ -174,6 +175,7 @@ fact_estimated_sale = Table(
     Column("date_key", Integer, nullable=False),          # YYYYMMDD of inferred sale
     Column("manufacturer_key", Integer, nullable=False),
     Column("boat_model_key", Integer, nullable=True),
+    Column("listing_year", SmallInteger, nullable=True),
     Column("state", CHAR(2), nullable=True),
     Column("inventory_type", String(10), nullable=False), # 'New' | 'Used'
     Column("estimated_sale_price", Numeric(10, 2), nullable=True),

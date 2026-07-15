@@ -40,18 +40,16 @@ class InventoryVelocityRow(BaseModel):
     manufacturer: str
     model: str
     year: Optional[int]
-    avg_days_on_market: float
+    avg_days_on_market: Optional[float] = None
     dom_velocity_label: DomVelocityLabel
     active_units: int
     boats_sold: int
-    momentum: MomentumLabel
+    momentum: Optional[MomentumLabel] = None
 
 
 class InventoryVelocityData(BaseModel):
     rows: list[InventoryVelocityRow]
     total_records: int
-    limit: int
-    offset: int
 
 
 # ---------------------------------------------------------------------------
