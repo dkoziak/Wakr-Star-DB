@@ -30,6 +30,14 @@ jobs:
           key: ${{ secrets.DROPLET_SSH_KEY }}
           envs: STARDB_URL,STARDB_HOST,STARDB_PORT,STARDB_DB,STARDB_USER,STARDB_PASSWORD,DEBUG,TOKEN_ISSUER,TOKEN_AUDIENCE,JWT_PUBLIC_KEY,ANALYTICS_API_KEY,DOMAIN_NAME
           script: |
+            export PATH=$PATH:/usr/bin:/usr/local/bin:/usr/sbin:/sbin:/snap/bin
+
+            # Clone repository if it doesn't exist yet on the Droplet
+            if [ ! -d "/root/Wakr-Star-DB" ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/dkoziak/Wakr-Star-DB.git /root/Wakr-Star-DB
+            fi
+
             cd /root/Wakr-Star-DB
             git pull origin main
 
