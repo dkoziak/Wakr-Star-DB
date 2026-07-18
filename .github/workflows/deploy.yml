@@ -1,0 +1,41 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          STARDB_URL: ${{ secrets.STARDB_URL }}
+          STARDB_HOST: ${{ vars.STARDB_HOST }}
+          STARDB_PORT: ${{ vars.STARDB_PORT }}
+          STARDB_DB: ${{ vars.STARDB_DB }}
+          STARDB_USER: ${{ vars.STARDB_USER }}
+          STARDB_PASSWORD: ${{ secrets.STARDB_PASSWORD }}
+          DEBUG: ${{ vars.DEBUG }}
+          TOKEN_ISSUER: ${{ vars.TOKEN_ISSUER }}
+          TOKEN_AUDIENCE: ${{ vars.TOKEN_AUDIENCE }}
+          JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
+          ANALYTICS_API_KEY: ${{ secrets.ANALYTICS_API_KEY }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        with:
+          host: ${{ vars.DROPLET_IP }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          envs: STARDB_URL,STARDB_HOST,STARDB_PORT,STARDB_DB,STARDB_USER,STARDB_PASSWORD,DEBUG,TOKEN_ISSUER,TOKEN_AUDIENCE,JWT_PUBLIC_KEY,ANALYTICS_API_KEY,DOMAIN_NAME
+          script: |
+            cd /root/Wakr-Star-DB
+            git pull origin main
+
+            # Safe write to .env (filtering only defined config variables)
+            env | grep -E "^(STARDB_URL|STARDB_HOST|STARDB_PORT|STARDB_DB|STARDB_USER|STARDB_PASSWORD|DEBUG|TOKEN_ISSUER|TOKEN_AUDIENCE|JWT_PUBLIC_KEY|ANALYTICS_API_KEY|DOMAIN_NAME)=" > .env
+
+            docker compose down
+            docker compose build
+            docker compose up -d
