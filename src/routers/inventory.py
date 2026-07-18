@@ -8,10 +8,8 @@ from sqlalchemy import and_, func, select, tuple_
 from auth import require_auth
 from db.engine import get_conn
 from db.tables import (
-    dim_boat_model,
-    dim_manufacturer,
-    fact_estimated_sale as fes,
-    mart_daily_snapshot as mds,
+    v_estimated_sale as fes,
+    v_daily_snapshot as mds,
 )
 from models.common import (
     ApiResponse,
@@ -265,20 +263,18 @@ async def inventory_velocity(
                 ).label("avg_dom"),
                 func.sum(mds.c.active_listings).label("active_units"),
                 func.max(mds.c.last_scrape_date).label("last_scrape_date"),
-                dim_boat_model.c.make,
-                dim_boat_model.c.model,
-                dim_manufacturer.c.manufacturer_name,
+                mds.c.make,
+                mds.c.model,
+                mds.c.manufacturer_name,
             )
-            .join(dim_boat_model, mds.c.boat_model_key == dim_boat_model.c.boat_model_key)
-            .join(dim_manufacturer, mds.c.manufacturer_key == dim_manufacturer.c.manufacturer_key)
             .where(and_(*stock_conds))
             .group_by(
                 mds.c.manufacturer_key,
                 mds.c.boat_model_key,
                 mds.c.listing_year,
-                dim_boat_model.c.make,
-                dim_boat_model.c.model,
-                dim_manufacturer.c.manufacturer_name,
+                mds.c.make,
+                mds.c.model,
+                mds.c.manufacturer_name,
             )
         )
 
@@ -376,17 +372,8 @@ async def inventory_velocity(
                     fes.c.manufacturer_key,
                     fes.c.boat_model_key,
                     fes.c.listing_year,
-                    dim_manufacturer.c.manufacturer_name,
-                    dim_boat_model.c.model,
-                )
-                .select_from(fes)
-                .outerjoin(
-                    dim_boat_model,
-                    dim_boat_model.c.boat_model_key == fes.c.boat_model_key,
-                )
-                .outerjoin(
-                    dim_manufacturer,
-                    dim_manufacturer.c.manufacturer_key == fes.c.manufacturer_key,
+                    fes.c.manufacturer_name,
+                    fes.c.model,
                 )
                 .where(
                     and_(
@@ -402,8 +389,8 @@ async def inventory_velocity(
                     fes.c.manufacturer_key,
                     fes.c.boat_model_key,
                     fes.c.listing_year,
-                    dim_manufacturer.c.manufacturer_name,
-                    dim_boat_model.c.model,
+                    fes.c.manufacturer_name,
+                    fes.c.model,
                 )
             )
             for label_row in (await conn.execute(sale_only_label_q)).fetchall():

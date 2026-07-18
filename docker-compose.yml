@@ -1,14 +1,29 @@
 services:
   api:
     build: .
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file:
-      - src/.env
+      - .env
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+    depends_on:
+      - api
 
   db:
     image: postgres:16-alpine
@@ -26,3 +41,5 @@ services:
 
 volumes:
   pg_data:
+  caddy_data:
+  caddy_config:
